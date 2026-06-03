@@ -190,7 +190,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ── Clean the auth query params from the URL once on mount ─────────────────
   useEffect(() => {
-    window.history.replaceState({}, '', window.location.pathname)
+    try {
+      // Collapse accidental double slashes (e.g. from a trailing-slash origin):
+      // passing "//" to replaceState is read as a protocol-relative URL and throws.
+      const clean = window.location.pathname.replace(/\/{2,}/g, '/') || '/'
+      window.history.replaceState({}, '', clean)
+    } catch {
+      /* never let URL cleanup crash the app */
+    }
   }, [])
 
   // ── Session hydration ─────────────────────────────────────────────────────

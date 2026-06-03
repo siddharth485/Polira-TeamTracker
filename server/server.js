@@ -14,7 +14,9 @@ const isProd = process.env.NODE_ENV === 'production'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
-const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173'
+// Strip trailing slashes so redirects like `${origin}/?auth=success` don't
+// produce a "//" path (which crashes history.replaceState in the browser).
+const frontendOrigin = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173').replace(/\/+$/, '')
 
 const clientId = process.env.GOOGLE_CLIENT_ID
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET
