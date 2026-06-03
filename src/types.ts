@@ -138,6 +138,7 @@ export type Action =
   | 'ticket.editDates'
   | 'ticket.archive'
   | 'ticket.unarchive'
+  | 'ticket.delete'
   | 'request.approve'
   | 'comment.add'
   | 'comment.edit'

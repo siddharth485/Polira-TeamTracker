@@ -62,6 +62,7 @@ export function can(user: Employee | null, action: Action, ctx: Ctx = {}): boole
     }
 
     case 'ticket.archive':
+    case 'ticket.delete':
       return isAdmin
     case 'ticket.unarchive':
     case 'request.approve':

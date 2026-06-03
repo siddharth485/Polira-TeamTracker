@@ -9,6 +9,7 @@ import {
 } from '../../config/workItems'
 import { useStore } from '../../lib/storeContext'
 import { can } from '../../lib/permissions'
+import { useToast } from '../../lib/toastContext'
 import { downloadCsv } from '../../lib/csv'
 import { formatDate } from '../../lib/format'
 import type { Priority, Status, Team, Ticket } from '../../types'
@@ -21,13 +22,16 @@ type Props = {
 type ArchiveFilter = 'live' | 'archived' | 'all'
 
 export function TicketsTable({ query, onOpenTicket }: Props) {
-  const { tickets, requests, currentUser, unarchiveTicket, createRequest } = useStore()
+  const { tickets, requests, currentUser, unarchiveTicket, createRequest, deleteTicket } = useStore()
+  const { showToast } = useToast()
   const [status, setStatus] = useState<Status | 'All'>('All')
   const [priority, setPriority] = useState<Priority | 'All'>('All')
   const [team, setTeam] = useState<Team | 'All'>('All')
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>('all')
+  const [confirmId, setConfirmId] = useState<string | null>(null)
 
   const canUnarchive = can(currentUser, 'ticket.unarchive')
+  const canDelete = can(currentUser, 'ticket.delete')
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -148,14 +152,31 @@ export function TicketsTable({ query, onOpenTicket }: Props) {
                       : <span className="cell-muted">Live</span>}
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    {t.archived && canUnarchive && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => unarchiveTicket(t.id)}>↩ Unarchive</button>
-                    )}
-                    {t.archived && !canUnarchive && (
-                      <button className="btn btn-ghost btn-sm" disabled={pendingFor(t.id)} onClick={() => requestUnarchive(t.id, t.title)}>
-                        {pendingFor(t.id) ? 'Requested ✓' : 'Request'}
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      {t.archived && canUnarchive && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => unarchiveTicket(t.id)}>↩ Unarchive</button>
+                      )}
+                      {t.archived && !canUnarchive && (
+                        <button className="btn btn-ghost btn-sm" disabled={pendingFor(t.id)} onClick={() => requestUnarchive(t.id, t.title)}>
+                          {pendingFor(t.id) ? 'Requested ✓' : 'Request'}
+                        </button>
+                      )}
+                      {canDelete && (
+                        confirmId === t.id ? (
+                          <>
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => { deleteTicket(t.id); setConfirmId(null); showToast(`Deleted ${t.id}`, 'info') }}
+                            >
+                              Confirm
+                            </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setConfirmId(null)}>Cancel</button>
+                          </>
+                        ) : (
+                          <button className="btn btn-ghost btn-sm danger" onClick={() => setConfirmId(t.id)}>Delete</button>
+                        )
+                      )}
+                    </div>
                   </td>
                 </tr>
               )

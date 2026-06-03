@@ -130,6 +130,13 @@ button {
   background: var(--surface-3);
   color: var(--text);
 }
+.btn-danger {
+  background: #ef4444;
+  color: #fff;
+}
+.btn-danger:hover {
+  background: #dc2626;
+}
 .btn-sm {
   padding: 6px 12px;
   font-size: 12.5px;

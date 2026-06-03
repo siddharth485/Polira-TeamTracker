@@ -46,6 +46,7 @@ export type Store = {
   deleteComment: (id: string) => void
   archiveTicket: (id: string) => void
   unarchiveTicket: (id: string) => void
+  deleteTicket: (id: string) => void
   createProject: (input: Partial<Project> & Pick<Project, 'name' | 'team'>) => Project
   addEmployee: (input: Omit<Employee, 'id' | 'avatar'> & { id?: string }) => void
   toggleEmployeeActive: (id: string) => void

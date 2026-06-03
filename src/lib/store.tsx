@@ -358,6 +358,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setData((prev) => ({ ...prev, comments: prev.comments.filter((c) => c.id !== id) }))
   }, [])
 
+  const deleteTicket = useCallback<Store['deleteTicket']>((id) => {
+    setData((prev) => ({
+      ...prev,
+      tickets: prev.tickets.filter((t) => t.id !== id),
+      comments: prev.comments.filter((c) => c.ticketId !== id), // cascade
+    }))
+  }, [])
+
   const createProject = useCallback<Store['createProject']>((input) => {
     const project: Project = {
       id: createId('EPIC', 4),
@@ -519,6 +527,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteComment,
       archiveTicket,
       unarchiveTicket,
+      deleteTicket,
       createProject,
       addEmployee,
       toggleEmployeeActive,
@@ -557,6 +566,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteComment,
       archiveTicket,
       unarchiveTicket,
+      deleteTicket,
       createProject,
       addEmployee,
       toggleEmployeeActive,
