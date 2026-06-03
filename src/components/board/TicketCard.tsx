@@ -6,6 +6,7 @@ import {
   WORK_ITEMS,
 } from '../../config/workItems'
 import { formatDate, isOverdue } from '../../lib/format'
+import { ticketHeat } from '../../lib/heat'
 import type { Ticket } from '../../types'
 import { Avatar } from '../Avatar'
 
@@ -22,11 +23,13 @@ export function TicketCard({ ticket, onOpen, onDragStart, onDragEnd, dragging }:
   const team = TEAM_COLORS[ticket.team] ?? 'var(--brand)'
   const prio = PRIORITY_META[ticket.priority]
   const overdue = isOverdue(ticket.dueDate, ticket.status === 'Done')
+  const heat = ticketHeat(ticket)
 
   return (
     <motion.article
       className="ticket-card"
       draggable
+      title={heat.tip}
       onClick={() => onOpen(ticket.id)}
       onDragStart={(e) => {
         const ev = e as unknown as DragEvent<HTMLElement>
@@ -37,7 +40,7 @@ export function TicketCard({ ticket, onOpen, onDragStart, onDragEnd, dragging }:
       onDragEnd={onDragEnd}
       whileHover={{ y: -3 }}
       animate={{ opacity: dragging ? 0.5 : 1 }}
-      style={{ boxShadow: dragging ? 'var(--shadow-lg)' : undefined }}
+      style={{ background: heat.bg, boxShadow: dragging ? 'var(--shadow-lg)' : undefined }}
     >
       <span className="stub" style={{ background: team }} />
 

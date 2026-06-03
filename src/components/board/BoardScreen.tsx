@@ -39,6 +39,11 @@ export function BoardScreen({ query, onOpenTicket, onAddCard }: Props) {
       <div className="filters">
         <TeamSwitch value={team} onChange={setTeam} subTeam={subTeam} onSubTeamChange={setSubTeam} />
         <span style={{ flex: 1 }} />
+        <div className="heat-legend" title="Card colour tracks timeliness">
+          <span><i style={{ background: 'color-mix(in srgb, #22c55e 40%, var(--surface))' }} />Done</span>
+          <span><i style={{ background: 'var(--surface-2)', borderColor: 'var(--border-strong)' }} />On time</span>
+          <span><i style={{ background: 'color-mix(in srgb, #ef4444 45%, var(--surface))' }} />Due / late</span>
+        </div>
         <select
           className="select-pill"
           value={priority}
