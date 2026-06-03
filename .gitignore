@@ -20,6 +20,12 @@ dist-ssr
 # Local throwaway (screenshots, playwright driver)
 .shots
 
+# Large 3D model assets (too big for git; use Git LFS or external storage)
+3dmodels/
+*.obj
+*.glb
+*.fbx
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
