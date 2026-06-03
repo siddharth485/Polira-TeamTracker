@@ -1,10 +1,5 @@
 # Polira
 
-A team task tracker for **Pacwin India** — a political-consulting workspace with a
-Kanban board, typed work-items under projects (epics), role-based access
-(Admin / Manager / Member), an org-hierarchy tree, per-person performance profiles
-(3D figure + charts + AI insight), and a WhatsApp ticket importer.
-
 Built with **React 19 + Vite + TypeScript + framer-motion**, a small **Node/Express**
 backend for **Google OAuth + Google Sheets** sync, **three.js** (react-three-fiber) for the
 3D profile figure, and **recharts** for analytics.
