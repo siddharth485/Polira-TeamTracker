@@ -33,7 +33,6 @@ import { initials } from '../config/workItems'
 
 const STORAGE_KEY = 'polira-cache-v6'
 const THEME_KEY = 'polira-theme'
-const VIEWAS_KEY = 'polira-viewas'
 
 type CachedState = {
   projects: Project[]
@@ -126,7 +125,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<CachedState>(loadCache)
   const { projects, tickets, employees, comments, requests, feedback } = data
 
-  const [viewAsId, setViewAsId] = useState<string>(() => localStorage.getItem(VIEWAS_KEY) || 'PR002')
+  // Empty = act as yourself. Only an admin's explicit selection previews someone else.
+  // Not persisted, so every login starts as the real signed-in person.
+  const [viewAsId, setViewAsId] = useState<string>('')
 
   // When true, the next data-change effect skips pushing to the server (used
   // right after we hydrate FROM the server, to avoid echoing it straight back).
@@ -155,9 +156,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, [auth, employees])
 
-  // Acting identity: only admins may preview (view-as) another person.
+  // Acting identity. Everyone defaults to THEMSELVES (the signed-in person).
+  // An admin may explicitly preview another user via the view-as switcher.
   const currentUser = useMemo<Employee | null>(() => {
-    if (realUser && realUser.role === 'Admin') {
+    if (!realUser) return null
+    if (realUser.role === 'Admin' && viewAsId && viewAsId !== realUser.id) {
       return employees.find((e) => e.id === viewAsId) ?? realUser
     }
     return realUser
@@ -167,7 +170,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setViewAs = useCallback((id: string) => {
     setViewAsId(id)
-    localStorage.setItem(VIEWAS_KEY, id)
   }, [])
 
   // Acting user's display name, read inside action handlers (never in render).

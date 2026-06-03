@@ -58,7 +58,7 @@ export function Sidebar({ screen, onNavigate, onOpenProfile }: Props) {
         {canViewAs && (
           <div className="viewas">
             <label className="field" style={{ marginBottom: 4 }}>Viewing as (admin)</label>
-            <select className="select-pill viewas-select" value={viewAsId} onChange={(e) => setViewAs(e.target.value)}>
+            <select className="select-pill viewas-select" value={viewAsId || realUser?.id || ''} onChange={(e) => setViewAs(e.target.value)}>
               {employees.map((e) => (
                 <option key={e.id} value={e.id}>{e.name} · {e.role}</option>
               ))}
