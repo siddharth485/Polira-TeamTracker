@@ -1,0 +1,519 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import type { ReactNode } from 'react'
+import { StoreContext } from './storeContext'
+import type { Store } from './storeContext'
+import {
+  seedComments,
+  seedEmployees,
+  seedFeedback,
+  seedProjects,
+  seedRequests,
+  seedTickets,
+} from '../data/seed'
+import type {
+  AuthUser,
+  Comment,
+  Employee,
+  Feedback,
+  Project,
+  Request,
+  Role,
+  SyncState,
+  Team,
+  Ticket,
+} from '../types'
+import { createId } from './format'
+
+const STORAGE_KEY = 'polira-cache-v5'
+const THEME_KEY = 'polira-theme'
+const VIEWAS_KEY = 'polira-viewas'
+
+type CachedState = {
+  projects: Project[]
+  tickets: Ticket[]
+  employees: Employee[]
+  comments: Comment[]
+  requests: Request[]
+  feedback: Feedback[]
+}
+
+function loadCache(): CachedState {
+  const fallback: CachedState = {
+    projects: seedProjects,
+    tickets: seedTickets,
+    employees: seedEmployees,
+    comments: seedComments,
+    requests: seedRequests,
+    feedback: seedFeedback,
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return fallback
+    const parsed = JSON.parse(raw) as Partial<CachedState>
+    return {
+      projects: parsed.projects?.length ? parsed.projects : seedProjects,
+      tickets: parsed.tickets?.length ? parsed.tickets : seedTickets,
+      employees: parsed.employees?.length ? parsed.employees : seedEmployees,
+      comments: parsed.comments ?? seedComments,
+      requests: parsed.requests ?? seedRequests,
+      feedback: parsed.feedback ?? seedFeedback,
+    }
+  } catch {
+    return fallback
+  }
+}
+
+function persistCache(state: CachedState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
+function initialStatusMessage(): string {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('auth') === 'error') {
+    return decodeURIComponent(params.get('message') || 'Google login failed')
+  }
+  return 'Local demo data is ready'
+}
+
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem(THEME_KEY)
+    return saved === 'dark' ? 'dark' : 'light'
+  })
+  const [auth, setAuth] = useState<AuthUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [syncState, setSyncState] = useState<SyncState>('local')
+  const [statusMessage, setStatusMessage] = useState(initialStatusMessage)
+
+  const [data, setData] = useState<CachedState>(loadCache)
+  const { projects, tickets, employees, comments, requests, feedback } = data
+
+  const [viewAsId, setViewAsId] = useState<string>(() => localStorage.getItem(VIEWAS_KEY) || 'PR002')
+
+  // When true, the next data-change effect skips pushing to the server (used
+  // right after we hydrate FROM the server, to avoid echoing it straight back).
+  const skipNextPush = useRef(false)
+
+  // Acting identity: real signed-in person if logged in, else View-as selection.
+  const currentUser = useMemo<Employee | null>(() => {
+    if (auth) {
+      const byEmail = employees.find((e) => e.email.toLowerCase() === auth.email.toLowerCase())
+      if (byEmail) return byEmail
+    }
+    return employees.find((e) => e.id === viewAsId) ?? employees[0] ?? null
+  }, [auth, employees, viewAsId])
+
+  const role: Role = currentUser?.role ?? 'Viewer'
+
+  const setViewAs = useCallback((id: string) => {
+    setViewAsId(id)
+    localStorage.setItem(VIEWAS_KEY, id)
+  }, [])
+
+  // Acting user's display name, read inside action handlers (never in render).
+  const authNameRef = useRef('You')
+  useEffect(() => {
+    authNameRef.current = currentUser?.name ?? auth?.name ?? 'You'
+  }, [currentUser, auth])
+
+  // ── Theme ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem(THEME_KEY, theme)
+  }, [theme])
+
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => (t === 'light' ? 'dark' : 'light'))
+  }, [])
+
+  // ── Clean the auth query params from the URL once on mount ─────────────────
+  useEffect(() => {
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [])
+
+  // ── Session hydration ─────────────────────────────────────────────────────
+  useEffect(() => {
+    let mounted = true
+
+    async function hydrate() {
+      try {
+        const res = await fetch('/api/auth/session')
+        const payload = res.ok ? await res.json() : { user: null }
+        if (!mounted) return
+
+        if (!payload.user) {
+          setAuth(null)
+          setSyncState('local')
+          setStatusMessage('Demo mode — sign in with @pacwinindia.com for live sync.')
+          return
+        }
+
+        setAuth(payload.user)
+        setStatusMessage(`Signed in as ${payload.user.name}`)
+
+        const dataRes = await fetch('/api/data')
+        if (dataRes.ok && mounted) {
+          const fresh = await dataRes.json()
+          skipNextPush.current = true
+          setData((prev) => ({
+            projects: fresh.projects?.length ? fresh.projects : prev.projects,
+            tickets: fresh.tickets?.length ? fresh.tickets : prev.tickets,
+            employees: fresh.employees?.length ? fresh.employees : prev.employees,
+            comments: fresh.comments ?? prev.comments,
+            requests: fresh.requests ?? prev.requests,
+            feedback: fresh.feedback ?? prev.feedback,
+          }))
+          setSyncState('synced')
+          setStatusMessage(`Synced to Google Sheets for ${payload.user.name}`)
+        }
+      } catch {
+        if (mounted) {
+          setSyncState('local')
+          setStatusMessage('Sheets not configured — using local cache.')
+        }
+      } finally {
+        if (mounted) setAuthLoading(false)
+      }
+    }
+
+    void hydrate()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  // ── Persist to localStorage + push to Sheets whenever data changes ─────────
+  useEffect(() => {
+    persistCache(data)
+    if (!auth) return
+    if (skipNextPush.current) {
+      skipNextPush.current = false
+      return
+    }
+
+    let cancelled = false
+    setSyncState('saving')
+    ;(async () => {
+      try {
+        const res = await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        })
+        if (!cancelled) setSyncState(res.ok ? 'synced' : 'local')
+      } catch {
+        if (!cancelled) setSyncState('local')
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [data, auth])
+
+  // ── Actions (all functional updates → safe in sync loops) ──────────────────
+  const createTicket = useCallback<Store['createTicket']>((input) => {
+    const now = new Date().toISOString()
+    const ticket: Ticket = {
+      id: createId('TKT'),
+      title: input.title,
+      description: input.description ?? '',
+      type: input.type,
+      projectId: input.projectId ?? '',
+      team: input.team,
+      subTeam: input.subTeam ?? '',
+      status: input.status ?? 'Backlog',
+      priority: input.priority ?? 'Medium',
+      dueDate: input.dueDate ?? '',
+      assignee: input.assignee ?? '',
+      reporter: input.reporter ?? authNameRef.current,
+      source: input.source ?? 'Manual',
+      tags: input.tags ?? [],
+      archived: false,
+      archivedBy: '',
+      archivedAt: '',
+      createdAt: now,
+      updatedAt: now,
+    }
+    setData((prev) => ({ ...prev, tickets: [ticket, ...prev.tickets] }))
+    return ticket
+  }, [])
+
+  const archiveTicket = useCallback<Store['archiveTicket']>((id) => {
+    const now = new Date().toISOString()
+    setData((prev) => ({
+      ...prev,
+      tickets: prev.tickets.map((t) =>
+        t.id === id ? { ...t, archived: true, archivedBy: authNameRef.current, archivedAt: now, updatedAt: now } : t,
+      ),
+    }))
+  }, [])
+
+  const unarchiveTicket = useCallback<Store['unarchiveTicket']>((id) => {
+    setData((prev) => ({
+      ...prev,
+      tickets: prev.tickets.map((t) =>
+        t.id === id ? { ...t, archived: false, archivedBy: '', archivedAt: '', updatedAt: new Date().toISOString() } : t,
+      ),
+    }))
+  }, [])
+
+  const updateTicket = useCallback<Store['updateTicket']>((id, patch) => {
+    setData((prev) => ({
+      ...prev,
+      tickets: prev.tickets.map((t) =>
+        t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t,
+      ),
+    }))
+  }, [])
+
+  const moveTicket = useCallback<Store['moveTicket']>(
+    (id, status) => updateTicket(id, { status }),
+    [updateTicket],
+  )
+
+  const addComment = useCallback<Store['addComment']>((ticketId, text) => {
+    if (!text.trim()) return
+    const comment: Comment = {
+      id: createId('CMT'),
+      ticketId,
+      author: authNameRef.current,
+      text: text.trim(),
+      createdAt: new Date().toISOString(),
+    }
+    setData((prev) => ({ ...prev, comments: [...prev.comments, comment] }))
+  }, [])
+
+  const editComment = useCallback<Store['editComment']>((id, text) => {
+    if (!text.trim()) return
+    setData((prev) => ({
+      ...prev,
+      comments: prev.comments.map((c) => (c.id === id ? { ...c, text: text.trim() } : c)),
+    }))
+  }, [])
+
+  const deleteComment = useCallback<Store['deleteComment']>((id) => {
+    setData((prev) => ({ ...prev, comments: prev.comments.filter((c) => c.id !== id) }))
+  }, [])
+
+  const createProject = useCallback<Store['createProject']>((input) => {
+    const project: Project = {
+      id: createId('EPIC', 4),
+      name: input.name,
+      description: input.description ?? '',
+      team: input.team,
+      owner: input.owner ?? 'You',
+      status: input.status ?? 'Active',
+      color: input.color ?? '#6366f1',
+      dueDate: input.dueDate ?? '',
+      createdAt: new Date().toISOString(),
+    }
+    setData((prev) => ({ ...prev, projects: [project, ...prev.projects] }))
+    return project
+  }, [])
+
+  const addEmployee = useCallback<Store['addEmployee']>((input) => {
+    const employee: Employee = {
+      ...input,
+      id: input.id || createId('USR', 4),
+      avatar: input.name
+        .trim()
+        .split(/\s+/)
+        .map((p) => p[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase(),
+    }
+    setData((prev) => ({ ...prev, employees: [...prev.employees, employee] }))
+  }, [])
+
+  const toggleEmployeeActive = useCallback<Store['toggleEmployeeActive']>((id) => {
+    setData((prev) => ({
+      ...prev,
+      employees: prev.employees.map((e) => (e.id === id ? { ...e, active: !e.active } : e)),
+    }))
+  }, [])
+
+  const createRequest = useCallback<Store['createRequest']>((input) => {
+    const request: Request = {
+      ...input,
+      id: createId('REQ', 5),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      resolvedBy: '',
+      resolvedAt: '',
+    }
+    setData((prev) => ({ ...prev, requests: [request, ...prev.requests] }))
+  }, [])
+
+  const resolveRequest = useCallback<Store['resolveRequest']>((id, approve) => {
+    const now = new Date().toISOString()
+    const by = authNameRef.current
+    setData((prev) => {
+      const req = prev.requests.find((r) => r.id === id)
+      let tickets = prev.tickets
+      let employees = prev.employees
+      if (req && approve) {
+        if (req.type === 'unarchive' && req.ticketId) {
+          tickets = tickets.map((t) =>
+            t.id === req.ticketId ? { ...t, archived: false, archivedBy: '', archivedAt: '', updatedAt: now } : t,
+          )
+        }
+        if (req.type === 'team-move' && req.employeeId) {
+          employees = employees.map((e) =>
+            e.id === req.employeeId
+              ? { ...e, team: (req.targetTeam || e.team) as Team, managerId: req.targetManagerId || e.managerId }
+              : e,
+          )
+        }
+      }
+      return {
+        ...prev,
+        tickets,
+        employees,
+        requests: prev.requests.map((r) =>
+          r.id === id ? { ...r, status: approve ? 'approved' : 'rejected', resolvedBy: by, resolvedAt: now } : r,
+        ),
+      }
+    })
+  }, [])
+
+  const addFeedback = useCallback<Store['addFeedback']>((employeeId, points, comment) => {
+    const fb: Feedback = {
+      id: createId('FB', 5),
+      employeeId,
+      author: authNameRef.current,
+      points,
+      comment: comment.trim(),
+      createdAt: new Date().toISOString(),
+    }
+    setData((prev) => ({ ...prev, feedback: [fb, ...prev.feedback] }))
+  }, [])
+
+  const moveEmployee = useCallback<Store['moveEmployee']>((id, team, managerId) => {
+    setData((prev) => ({
+      ...prev,
+      employees: prev.employees.map((e) => (e.id === id ? { ...e, team, managerId } : e)),
+    }))
+  }, [])
+
+  const setEmployeeManager = useCallback<Store['setEmployeeManager']>((id, managerId) => {
+    setData((prev) => ({
+      ...prev,
+      employees: prev.employees.map((e) => (e.id === id ? { ...e, managerId } : e)),
+    }))
+  }, [])
+
+  const removeEmployee = useCallback<Store['removeEmployee']>((id) => {
+    setData((prev) => ({
+      ...prev,
+      // Re-parent anyone reporting to the removed person up one level.
+      employees: prev.employees
+        .filter((e) => e.id !== id)
+        .map((e) => (e.managerId === id ? { ...e, managerId: prev.employees.find((m) => m.id === id)?.managerId ?? '' } : e)),
+    }))
+  }, [])
+
+  const login = useCallback(() => {
+    window.location.href = '/api/auth/google'
+  }, [])
+
+  const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } finally {
+      setAuth(null)
+      setSyncState('local')
+      setStatusMessage('Signed out — local cache still available.')
+    }
+  }, [])
+
+  const value = useMemo<Store>(
+    () => ({
+      theme,
+      toggleTheme,
+      auth,
+      authLoading,
+      syncState,
+      statusMessage,
+      login,
+      logout,
+      currentUser,
+      role,
+      viewAsId,
+      setViewAs,
+      projects,
+      tickets,
+      employees,
+      comments,
+      requests,
+      feedback,
+      createTicket,
+      updateTicket,
+      moveTicket,
+      addComment,
+      editComment,
+      deleteComment,
+      archiveTicket,
+      unarchiveTicket,
+      createProject,
+      addEmployee,
+      toggleEmployeeActive,
+      createRequest,
+      resolveRequest,
+      addFeedback,
+      moveEmployee,
+      setEmployeeManager,
+      removeEmployee,
+    }),
+    [
+      theme,
+      toggleTheme,
+      auth,
+      authLoading,
+      syncState,
+      statusMessage,
+      login,
+      logout,
+      currentUser,
+      role,
+      viewAsId,
+      setViewAs,
+      projects,
+      tickets,
+      employees,
+      comments,
+      requests,
+      feedback,
+      createTicket,
+      updateTicket,
+      moveTicket,
+      addComment,
+      editComment,
+      deleteComment,
+      archiveTicket,
+      unarchiveTicket,
+      createProject,
+      addEmployee,
+      toggleEmployeeActive,
+      createRequest,
+      resolveRequest,
+      addFeedback,
+      moveEmployee,
+      setEmployeeManager,
+      removeEmployee,
+    ],
+  )
+
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+}

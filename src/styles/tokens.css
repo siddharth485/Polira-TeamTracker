@@ -1,0 +1,115 @@
+/* ── Design tokens: light + dark, switched via [data-theme] on <html> ─────── */
+
+:root {
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.14);
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Brand */
+  --brand: #6d5efc;
+  --brand-2: #8b5cf6;
+  --brand-grad: linear-gradient(135deg, #6d5efc, #a855f7);
+}
+
+/* ── Light ─────────────────────────────────────────────────────────────── */
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --bg: #eef1f8;
+  --bg-2: #f6f8fc;
+  --surface: #ffffff;
+  --surface-2: #f7f9fd;
+  --surface-3: #eef1f8;
+  --sidebar: #ffffff;
+  --border: #e6e9f2;
+  --border-strong: #d7dbe8;
+  --text: #1e2438;
+  --text-2: #5b637a;
+  --text-3: #97a0b8;
+  --shadow-color: rgba(15, 23, 42, 0.1);
+  --overlay: rgba(20, 24, 46, 0.32);
+  --pill-bg: #f1f3fa;
+  --track: #eceef6;
+}
+
+/* ── Dark ──────────────────────────────────────────────────────────────── */
+[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0a0c16;
+  --bg-2: #0e1120;
+  --surface: #141826;
+  --surface-2: #1a1f30;
+  --surface-3: #20263a;
+  --sidebar: #10131f;
+  --border: #232a3f;
+  --border-strong: #2f3650;
+  --text: #eef1fb;
+  --text-2: #9aa3bd;
+  --text-3: #6b7390;
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  --overlay: rgba(3, 5, 12, 0.6);
+  --pill-bg: #1c2233;
+  --track: #232a3f;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 28px 70px rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Smooth theme transition (skip on inputs to avoid sluggish typing feel) */
+body,
+.app-shell,
+.sidebar,
+.surface,
+.topbar,
+.kanban-column,
+.ticket-card,
+.data-table,
+.metric-card {
+  transition:
+    background-color 0.35s var(--ease),
+    border-color 0.35s var(--ease),
+    color 0.25s var(--ease);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

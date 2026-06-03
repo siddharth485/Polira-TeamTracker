@@ -1,0 +1,39 @@
+# Render Blueprint — deploys Polira as a single web service.
+# The Node/Express server serves both the /api routes and the built frontend.
+# In Render: New → Blueprint → pick this repo. Then set the `sync: false`
+# secrets in the dashboard (they are intentionally NOT stored in the repo).
+services:
+  - type: web
+    name: polira
+    runtime: node
+    plan: free
+    # --include=dev so Vite/TypeScript (devDependencies) are available to build.
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/config
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true # Render generates a strong secret
+      # ── Secrets / config you set in the Render dashboard ──────────────────
+      # Leave these unset to run in demo mode (local/seed data, no Google sync).
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false # e.g. https://polira.onrender.com/api/auth/google/callback
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false # e.g. https://polira.onrender.com
+      - key: PACWIN_ADMIN_EMAILS
+        sync: false
+      - key: PACWIN_MANAGER_EMAILS
+        sync: false
+      - key: PACWIN_MEMBER_EMAILS
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false # optional — enables real LLM profile insights
