@@ -29,6 +29,7 @@ import type {
   Ticket,
 } from '../types'
 import { createId } from './format'
+import { initials } from '../config/workItems'
 
 const STORAGE_KEY = 'polira-cache-v6'
 const THEME_KEY = 'polira-theme'
@@ -131,17 +132,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // right after we hydrate FROM the server, to avoid echoing it straight back).
   const skipNextPush = useRef(false)
 
-  // The real operator: signed-in person, or (demo) the default admin.
+  // The real operator. Identity ONLY comes from a signed-in Google account —
+  // no login means no access (handled by the login gate in App). A signed-in
+  // @pacwinindia.com email maps to its employee record (role from there);
+  // an unrecognised but valid account falls back to the role the server
+  // resolved from the email, with no team placement.
   const realUser = useMemo<Employee | null>(() => {
-    if (auth) {
-      return employees.find((e) => e.email.toLowerCase() === auth.email.toLowerCase()) ?? null
+    if (!auth) return null
+    const match = employees.find((e) => e.email.toLowerCase() === auth.email.toLowerCase())
+    if (match) return match
+    return {
+      id: auth.email,
+      name: auth.name || auth.email,
+      code: '',
+      email: auth.email,
+      team: 'Management',
+      role: auth.role,
+      active: true,
+      avatar: initials(auth.name || auth.email),
+      managerId: '',
+      gender: 'male',
     }
-    return (
-      employees.find((e) => e.id === 'PR002' && e.role === 'Admin') ??
-      employees.find((e) => e.role === 'Admin') ??
-      employees[0] ??
-      null
-    )
   }, [auth, employees])
 
   // Acting identity: only admins may preview (view-as) another person.

@@ -17,9 +17,10 @@ import { ProfileView } from './components/profile/ProfileView'
 import { Mascots } from './components/Mascots'
 import { ToastProvider } from './components/Toast'
 import { Logo } from './components/Logo'
+import { Login } from './components/Login'
 
 function Workspace() {
-  const { authLoading } = useStore()
+  const { authLoading, auth } = useStore()
   const [screen, setScreen] = useState<Screen>('Board')
   const [query, setQuery] = useState('')
   const [openTicket, setOpenTicket] = useState<string | null>(null)
@@ -46,6 +47,11 @@ function Workspace() {
         </motion.div>
       </div>
     )
+  }
+
+  // Identity comes only from a signed-in account — no session, no access.
+  if (!auth) {
+    return <Login />
   }
 
   return (

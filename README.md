@@ -9,8 +9,10 @@ Built with **React 19 + Vite + TypeScript + framer-motion**, a small **Node/Expr
 backend for **Google OAuth + Google Sheets** sync, **three.js** (react-three-fiber) for the
 3D profile figure, and **recharts** for analytics.
 
-> The app is **local-first**: it runs fully on seed data + `localStorage` with no login.
-> Google sign-in + Sheets sync are optional and activate only when configured.
+> **Access requires Google sign-in.** Polira is gated to **@pacwinindia.com** accounts —
+> with no session you only see the login screen. Each person's role (Admin / Manager /
+> Member) comes from their employee record / email mapping. This applies in local dev too,
+> so you must configure Google OAuth (below) to use the app anywhere.
 
 ## Local development
 
@@ -41,13 +43,14 @@ Render service (no separate frontend host needed).
 2. In Render: **New -> Blueprint**, pick the repo. It reads [`render.yaml`](render.yaml):
    - Build: `npm install --include=dev && npm run build`
    - Start: `npm start`
-3. Set the secret env vars in the Render dashboard (they are intentionally **not** in the repo).
-   To just demo it, leave the Google vars blank — it runs on seed data.
-4. For Google login, set in the dashboard once you know your URL
-   (`https://<app>.onrender.com`):
+3. **Google OAuth is required** (the app gates all access behind sign-in). Set these in the
+   Render dashboard once you know your URL (`https://<app>.onrender.com`):
    - `FRONTEND_ORIGIN=https://<app>.onrender.com`
    - `GOOGLE_REDIRECT_URI=https://<app>.onrender.com/api/auth/google/callback`
-   - add that same redirect URI to your Google Cloud OAuth client.
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (from Google Cloud), `GOOGLE_SHEET_ID`
+   - `PACWIN_ADMIN_EMAILS` / `PACWIN_MANAGER_EMAILS` / `PACWIN_MEMBER_EMAILS`
+   - add that same redirect URI to your Google Cloud OAuth client's "Authorized redirect URIs".
+   Until these are set, the deployed app will show the login screen but sign-in will fail.
 
 > Render's free tier sleeps when idle (~30s cold start). The 3D/charts code is lazy-loaded
 > so first paint stays light.
