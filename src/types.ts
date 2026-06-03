@@ -26,6 +26,12 @@ export type TicketSource = 'Manual' | 'WhatsApp'
 
 export type ProjectStatus = 'Active' | 'Paused' | 'Done'
 
+export type TicketEvent = {
+  at: string
+  by: string
+  text: string
+}
+
 export type Project = {
   id: string
   name: string
@@ -56,6 +62,7 @@ export type Ticket = {
   archived: boolean
   archivedBy: string
   archivedAt: string
+  history: TicketEvent[]
   createdAt: string
   updatedAt: string
 }

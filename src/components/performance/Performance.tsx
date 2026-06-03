@@ -63,10 +63,7 @@ export function Performance({ onOpenProfile }: Props) {
     }
   }, [tickets, visible])
 
-  const scopeLabel =
-    currentUser?.role === 'Admin' ? 'Whole organisation'
-      : currentUser?.role === 'Manager' ? 'Your team'
-        : 'You'
+  const scopeLabel = 'Whole organisation'
 
   const cards = [
     { label: 'Total tickets', value: stats.total, unit: '', accent: '#6d5efc' },

@@ -199,6 +199,48 @@ label.field {
   letter-spacing: 0.02em;
   box-shadow: 0 6px 16px rgba(109, 94, 252, 0.4);
 }
+/* Pacwin logo with a complementary-pink heartbeat highlight */
+.brand-logo {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  animation: heartbeat 2.6s ease-in-out infinite, pink-glow 2.6s ease-in-out infinite;
+  transform-origin: center;
+}
+@keyframes heartbeat {
+  0%, 70%, 100% { transform: scale(1); }
+  10% { transform: scale(1.13); }
+  20% { transform: scale(1); }
+  30% { transform: scale(1.08); }
+  40% { transform: scale(1); }
+}
+@keyframes pink-glow {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(236, 72, 153, 0.35)); }
+  15% { filter: drop-shadow(0 0 12px rgba(236, 72, 153, 0.75)); }
+}
+
+/* ── Boot / loading screen ────────────────────────────────────────────── */
+.boot-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background:
+    radial-gradient(50% 50% at 50% 42%, rgba(236, 72, 153, 0.18), transparent),
+    var(--bg);
+}
+.boot-logo {
+  filter: drop-shadow(0 0 26px rgba(236, 72, 153, 0.55));
+}
+.boot-word {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
 .brand-name {
   font-size: 17px;
   font-weight: 800;
@@ -241,13 +283,26 @@ label.field {
   place-items: center;
   flex-shrink: 0;
 }
-.viewas {
+.sidebar-bottom {
   margin-top: auto;
+}
+.viewas {
   padding: 10px 6px 4px;
 }
 .viewas-select {
   width: 100%;
   font-size: 12px;
+}
+.viewas-exit {
+  width: calc(100% - 12px);
+  margin: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
 }
 .sidebar-foot {
   display: flex;
@@ -1549,6 +1604,46 @@ label.field {
   .chart-grid { grid-template-columns: 1fr; }
   .profile-stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── Ticket history timeline ──────────────────────────────────────────── */
+.ticket-history {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.th-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.th-head strong { font-size: 14px; }
+.th-head span { font-size: 11.5px; color: var(--text-3); }
+.th-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 6px;
+}
+.th-timeline li {
+  position: relative;
+  padding: 0 0 14px 20px;
+  border-left: 2px solid var(--border);
+}
+.th-timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.th-dot {
+  position: absolute;
+  left: -6px;
+  top: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--brand);
+  box-shadow: 0 0 0 3px var(--surface-2);
+}
+.th-body p { margin: 0; font-size: 13px; font-weight: 600; }
+.th-body span { font-size: 11.5px; color: var(--text-3); }
 
 /* ── Auth screen ──────────────────────────────────────────────────────── */
 .auth-shell {

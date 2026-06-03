@@ -16,6 +16,7 @@ import { TicketDetail } from './components/TicketDetail'
 import { ProfileView } from './components/profile/ProfileView'
 import { Mascots } from './components/Mascots'
 import { ToastProvider } from './components/Toast'
+import { Logo } from './components/Logo'
 
 function Workspace() {
   const { authLoading } = useStore()
@@ -27,11 +28,22 @@ function Workspace() {
 
   if (authLoading) {
     return (
-      <div className="auth-shell">
-        <div className="auth-card">
-          <div className="brand-mark">P</div>
-          <p>Loading your workspace…</p>
-        </div>
+      <div className="boot-shell">
+        <motion.div
+          className="boot-logo"
+          animate={{ scale: [1, 1.14, 1, 1.09, 1] }}
+          transition={{ duration: 1.4, times: [0, 0.15, 0.3, 0.45, 0.7], repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <Logo size={96} />
+        </motion.div>
+        <motion.div
+          className="boot-word"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          Polira
+        </motion.div>
       </div>
     )
   }

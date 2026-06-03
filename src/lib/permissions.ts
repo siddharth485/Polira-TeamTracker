@@ -81,12 +81,10 @@ export function can(user: Employee | null, action: Action, ctx: Ctx = {}): boole
       return isAdmin || isManager
 
     // ── Profiles ─────────────────────────────────────────────────────────
+    // Everyone may VIEW profiles / the Teams + Performance tabs (read-only).
+    // Editing powers (feedback, restructure, ticket edits) stay role-scoped.
     case 'profile.view':
-      if (isAdmin) return true
-      if (!ctx.target) return false
-      if (ctx.target.id === user.id) return true // always your own
-      if (isManager && ctx.employees) return managesEmployee(user, ctx.target.id, ctx.employees)
-      return false
+      return true
 
     // ── Feedback ─────────────────────────────────────────────────────────
     case 'feedback.give':

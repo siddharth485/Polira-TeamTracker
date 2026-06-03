@@ -23,7 +23,9 @@ export type Store = {
   login: () => void
   logout: () => Promise<void>
 
-  // Acting identity (View-as in demo, real signed-in person when logged in).
+  // realUser = the actual operator (signed-in person, or default admin in demo).
+  // currentUser = who they're acting as (only admins may preview others).
+  realUser: Employee | null
   currentUser: Employee | null
   role: Role
   viewAsId: string

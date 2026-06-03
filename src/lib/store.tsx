@@ -30,7 +30,7 @@ import type {
 } from '../types'
 import { createId } from './format'
 
-const STORAGE_KEY = 'polira-cache-v5'
+const STORAGE_KEY = 'polira-cache-v6'
 const THEME_KEY = 'polira-theme'
 const VIEWAS_KEY = 'polira-viewas'
 
@@ -77,6 +77,33 @@ function persistCache(state: CachedState) {
   }
 }
 
+// Human-readable history entries for the fields changed in a ticket update.
+const TRACKED: { key: keyof Ticket; label: string }[] = [
+  { key: 'status', label: 'Status' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'dueDate', label: 'Due date' },
+  { key: 'assignee', label: 'Assignee' },
+  { key: 'team', label: 'Team' },
+  { key: 'subTeam', label: 'Sub-team' },
+  { key: 'type', label: 'Type' },
+  { key: 'title', label: 'Title' },
+  { key: 'description', label: 'Description' },
+]
+
+function describeChanges(prev: Ticket, patch: Partial<Ticket>, by: string): import('../types').TicketEvent[] {
+  const at = new Date().toISOString()
+  const out: import('../types').TicketEvent[] = []
+  for (const { key, label } of TRACKED) {
+    if (!(key in patch)) continue
+    const before = String(prev[key] ?? '')
+    const after = String(patch[key as keyof typeof patch] ?? '')
+    if (before === after) continue
+    if (key === 'description' || key === 'title') out.push({ at, by, text: `Edited the ${label.toLowerCase()}` })
+    else out.push({ at, by, text: `${label}: ${before || '—'} → ${after || '—'}` })
+  }
+  return out
+}
+
 function initialStatusMessage(): string {
   const params = new URLSearchParams(window.location.search)
   if (params.get('auth') === 'error') {
@@ -104,14 +131,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // right after we hydrate FROM the server, to avoid echoing it straight back).
   const skipNextPush = useRef(false)
 
-  // Acting identity: real signed-in person if logged in, else View-as selection.
-  const currentUser = useMemo<Employee | null>(() => {
+  // The real operator: signed-in person, or (demo) the default admin.
+  const realUser = useMemo<Employee | null>(() => {
     if (auth) {
-      const byEmail = employees.find((e) => e.email.toLowerCase() === auth.email.toLowerCase())
-      if (byEmail) return byEmail
+      return employees.find((e) => e.email.toLowerCase() === auth.email.toLowerCase()) ?? null
     }
-    return employees.find((e) => e.id === viewAsId) ?? employees[0] ?? null
-  }, [auth, employees, viewAsId])
+    return (
+      employees.find((e) => e.id === 'PR002' && e.role === 'Admin') ??
+      employees.find((e) => e.role === 'Admin') ??
+      employees[0] ??
+      null
+    )
+  }, [auth, employees])
+
+  // Acting identity: only admins may preview (view-as) another person.
+  const currentUser = useMemo<Employee | null>(() => {
+    if (realUser && realUser.role === 'Admin') {
+      return employees.find((e) => e.id === viewAsId) ?? realUser
+    }
+    return realUser
+  }, [realUser, employees, viewAsId])
 
   const role: Role = currentUser?.role ?? 'Viewer'
 
@@ -242,6 +281,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       archived: false,
       archivedBy: '',
       archivedAt: '',
+      history: [{ at: now, by: input.reporter ?? authNameRef.current, text: 'Created the ticket' }],
       createdAt: now,
       updatedAt: now,
     }
@@ -251,28 +291,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const archiveTicket = useCallback<Store['archiveTicket']>((id) => {
     const now = new Date().toISOString()
+    const by = authNameRef.current
     setData((prev) => ({
       ...prev,
       tickets: prev.tickets.map((t) =>
-        t.id === id ? { ...t, archived: true, archivedBy: authNameRef.current, archivedAt: now, updatedAt: now } : t,
+        t.id === id
+          ? { ...t, archived: true, archivedBy: by, archivedAt: now, updatedAt: now, history: [...t.history, { at: now, by, text: 'Archived the ticket' }] }
+          : t,
       ),
     }))
   }, [])
 
   const unarchiveTicket = useCallback<Store['unarchiveTicket']>((id) => {
+    const now = new Date().toISOString()
+    const by = authNameRef.current
     setData((prev) => ({
       ...prev,
       tickets: prev.tickets.map((t) =>
-        t.id === id ? { ...t, archived: false, archivedBy: '', archivedAt: '', updatedAt: new Date().toISOString() } : t,
+        t.id === id
+          ? { ...t, archived: false, archivedBy: '', archivedAt: '', updatedAt: now, history: [...t.history, { at: now, by, text: 'Restored to the live board' }] }
+          : t,
       ),
     }))
   }, [])
 
   const updateTicket = useCallback<Store['updateTicket']>((id, patch) => {
+    const by = authNameRef.current
     setData((prev) => ({
       ...prev,
       tickets: prev.tickets.map((t) =>
-        t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t,
+        t.id === id
+          ? { ...t, ...patch, updatedAt: new Date().toISOString(), history: [...t.history, ...describeChanges(t, patch, by)] }
+          : t,
       ),
     }))
   }, [])
@@ -284,14 +334,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addComment = useCallback<Store['addComment']>((ticketId, text) => {
     if (!text.trim()) return
-    const comment: Comment = {
-      id: createId('CMT'),
-      ticketId,
-      author: authNameRef.current,
-      text: text.trim(),
-      createdAt: new Date().toISOString(),
-    }
-    setData((prev) => ({ ...prev, comments: [...prev.comments, comment] }))
+    const now = new Date().toISOString()
+    const by = authNameRef.current
+    const comment: Comment = { id: createId('CMT'), ticketId, author: by, text: text.trim(), createdAt: now }
+    setData((prev) => ({
+      ...prev,
+      comments: [...prev.comments, comment],
+      tickets: prev.tickets.map((t) =>
+        t.id === ticketId ? { ...t, history: [...t.history, { at: now, by, text: 'Added a comment' }] } : t,
+      ),
+    }))
   }, [])
 
   const editComment = useCallback<Store['editComment']>((id, text) => {
@@ -448,6 +500,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       statusMessage,
       login,
       logout,
+      realUser,
       currentUser,
       role,
       viewAsId,
@@ -485,6 +538,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       statusMessage,
       login,
       logout,
+      realUser,
       currentUser,
       role,
       viewAsId,

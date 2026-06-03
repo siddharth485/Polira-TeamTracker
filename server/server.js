@@ -136,7 +136,7 @@ function flattenProjects(projects) {
 
 function flattenTickets(tickets) {
   return [
-    ['id', 'title', 'description', 'type', 'projectId', 'team', 'subTeam', 'status', 'priority', 'dueDate', 'assignee', 'reporter', 'source', 'tags', 'archived', 'archivedBy', 'archivedAt', 'createdAt', 'updatedAt'],
+    ['id', 'title', 'description', 'type', 'projectId', 'team', 'subTeam', 'status', 'priority', 'dueDate', 'assignee', 'reporter', 'source', 'tags', 'archived', 'archivedBy', 'archivedAt', 'createdAt', 'updatedAt', 'history'],
     ...tickets.map((ticket) => [
       ticket.id,
       ticket.title,
@@ -157,6 +157,7 @@ function flattenTickets(tickets) {
       ticket.archivedAt || '',
       ticket.createdAt || '',
       ticket.updatedAt || '',
+      JSON.stringify(ticket.history || []),
     ]),
   ]
 }
@@ -255,7 +256,17 @@ function parseTickets(rows) {
     archivedAt: String(row[16] || ''),
     createdAt: String(row[17] || ''),
     updatedAt: String(row[18] || ''),
+    history: parseJsonArray(row[19]),
   }))
+}
+
+function parseJsonArray(value) {
+  try {
+    const v = JSON.parse(String(value || '[]'))
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
 }
 
 function parseEmployees(rows) {

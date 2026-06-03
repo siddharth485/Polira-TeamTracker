@@ -95,9 +95,15 @@ export const seedProjects: Project[] = [
 ]
 
 const t = (
-  partial: Omit<Ticket, 'archived' | 'archivedBy' | 'archivedAt'> &
-    Partial<Pick<Ticket, 'archived' | 'archivedBy' | 'archivedAt'>>,
-): Ticket => ({ archived: false, archivedBy: '', archivedAt: '', ...partial })
+  partial: Omit<Ticket, 'archived' | 'archivedBy' | 'archivedAt' | 'history'> &
+    Partial<Pick<Ticket, 'archived' | 'archivedBy' | 'archivedAt' | 'history'>>,
+): Ticket => ({
+  archived: false,
+  archivedBy: '',
+  archivedAt: '',
+  history: [{ at: partial.createdAt, by: partial.reporter, text: 'Created the ticket' }],
+  ...partial,
+})
 
 export const seedTickets: Ticket[] = [
   t({

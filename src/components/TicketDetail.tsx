@@ -34,6 +34,7 @@ export function TicketDetail({ ticketId, onClose }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [editing, setEditing] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [form, setForm] = useState(() => ticket && ({
     title: ticket.title, description: ticket.description, type: ticket.type,
     team: ticket.team, subTeam: ticket.subTeam, assignee: ticket.assignee,
@@ -89,6 +90,7 @@ export function TicketDetail({ ticketId, onClose }: Props) {
             <div className="sub">{type.label}{project ? ` · ${project.name}` : ''}</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowHistory((s) => !s)}>🕘 History</button>
             {!ticket.archived && !editing && (
               <button className="btn btn-ghost btn-sm" onClick={startEdit}>✎ Edit</button>
             )}
@@ -106,6 +108,27 @@ export function TicketDetail({ ticketId, onClose }: Props) {
             <button className="icon-btn" onClick={onClose}>✕</button>
           </div>
         </div>
+
+        {showHistory && (
+          <div className="ticket-history">
+            <div className="th-head">
+              <strong>Ticket history</strong>
+              <span>{ticket.history.length} event{ticket.history.length === 1 ? '' : 's'}</span>
+            </div>
+            <ol className="th-timeline">
+              {[...ticket.history].reverse().map((e, i) => (
+                <li key={i}>
+                  <span className="th-dot" />
+                  <div className="th-body">
+                    <p>{e.text}</p>
+                    <span>{e.by} · {relativeTime(e.at)} · {formatDate(e.at)}</span>
+                  </div>
+                </li>
+              ))}
+              {ticket.history.length === 0 && <li className="cell-muted" style={{ fontSize: 13 }}>No history yet.</li>}
+            </ol>
+          </div>
+        )}
 
         {editing ? (
           <div className="form-grid" style={{ marginTop: 4 }}>
