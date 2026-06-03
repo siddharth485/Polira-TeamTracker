@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { TEAMS } from '../../config/workItems'
 import { useStore } from '../../lib/storeContext'
-import type { Gender, Role, Team } from '../../types'
+import { downloadCsv } from '../../lib/csv'
+import type { Employee, Gender, Role, Team } from '../../types'
 import { Avatar } from '../Avatar'
 
 const ROLES: Role[] = ['Admin', 'Manager', 'Member', 'Viewer']
@@ -28,6 +29,20 @@ export function Users({ query }: Props) {
   )
   const managers = employees.filter((e) => e.role === 'Manager' || e.role === 'Admin')
 
+  const exportEmployees = () => {
+    const managerName = (id: string) => employees.find((m) => m.id === id)?.name ?? ''
+    downloadCsv<Employee>('polira-employees.csv', employees, [
+      { key: 'name', label: 'Name' },
+      { key: 'code', label: 'Code' },
+      { key: 'email', label: 'Email' },
+      { key: 'team', label: 'Team' },
+      { key: 'role', label: 'Role' },
+      { key: 'active', label: 'Active', get: (e) => (e.active ? 'Active' : 'Inactive') },
+      { key: 'gender', label: 'Gender' },
+      { key: 'managerId', label: 'Reports to', get: (e) => managerName(e.managerId) },
+    ])
+  }
+
   const submit = () => {
     if (!form.name.trim() || !form.email.trim()) return
     addEmployee({ ...form, active: true })
@@ -39,7 +54,10 @@ export function Users({ query }: Props) {
     <>
       <div className="screen-head" style={{ marginBottom: 0 }}>
         <span />
-        <button className="btn btn-primary" onClick={() => setOpen(true)}>+ Add user</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-ghost" onClick={exportEmployees}>⤓ Export CSV</button>
+          <button className="btn btn-primary" onClick={() => setOpen(true)}>+ Add user</button>
+        </div>
       </div>
 
       <div className="surface table-wrap" style={{ marginTop: 16 }}>

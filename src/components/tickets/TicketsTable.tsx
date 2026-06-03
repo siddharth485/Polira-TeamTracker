@@ -9,8 +9,9 @@ import {
 } from '../../config/workItems'
 import { useStore } from '../../lib/storeContext'
 import { can } from '../../lib/permissions'
+import { downloadCsv } from '../../lib/csv'
 import { formatDate } from '../../lib/format'
-import type { Priority, Status, Team } from '../../types'
+import type { Priority, Status, Team, Ticket } from '../../types'
 
 type Props = {
   query: string
@@ -46,6 +47,27 @@ export function TicketsTable({ query, onOpenTicket }: Props) {
   const pendingFor = (ticketId: string) =>
     requests.some((r) => r.type === 'unarchive' && r.ticketId === ticketId && r.status === 'pending')
 
+  const exportTickets = () => {
+    downloadCsv<Ticket>('polira-tickets.csv', rows, [
+      { key: 'id', label: 'ID' },
+      { key: 'title', label: 'Title' },
+      { key: 'type', label: 'Type' },
+      { key: 'status', label: 'Status' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'team', label: 'Team' },
+      { key: 'subTeam', label: 'Sub-team' },
+      { key: 'assignee', label: 'Assignee' },
+      { key: 'reporter', label: 'Reporter' },
+      { key: 'dueDate', label: 'Due date' },
+      { key: 'source', label: 'Source' },
+      { key: 'archived', label: 'State', get: (t) => (t.archived ? 'Archived' : 'Live') },
+      { key: 'tags', label: 'Tags' },
+      { key: 'projectId', label: 'Project' },
+      { key: 'createdAt', label: 'Created' },
+      { key: 'updatedAt', label: 'Updated' },
+    ])
+  }
+
   const requestUnarchive = (ticketId: string, title: string) => {
     if (!currentUser) return
     createRequest({
@@ -79,6 +101,8 @@ export function TicketsTable({ query, onOpenTicket }: Props) {
           <option value="All">All teams</option>
           {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
+        <span style={{ flex: 1 }} />
+        <button className="btn btn-ghost" onClick={exportTickets}>⤓ Export CSV ({rows.length})</button>
       </div>
 
       <div className="surface table-wrap">
