@@ -67,7 +67,11 @@ export function TeamsScreen({ onOpenProfile }: Props) {
   const dropAllowed = (targetId: string): boolean => {
     if (!dragId || dragId === targetId) return false
     if (isDescendant(dragId, targetId)) return false // can't move under your own report
-    return true
+    if (isAdmin) return true
+    // Managers shuffle members only, and a member must land under a manager/admin —
+    // dropping one under another member would create new hierarchy (admin-only).
+    const target = employees.find((e) => e.id === targetId)
+    return !!target && (target.role === 'Manager' || target.role === 'Admin')
   }
 
   const handleDrop = (target: Employee) => {
@@ -158,7 +162,7 @@ export function TeamsScreen({ onOpenProfile }: Props) {
   const helpText = isAdmin
     ? 'Drag anyone (⠿) onto another person to re-assign them — shuffle resources across teams and projects. Use ⋯ to remove someone.'
     : isManager
-      ? 'This is the organisation hierarchy. Only an admin can restructure it.'
+      ? 'Drag a member (⠿) onto a manager to move them across teams. Only an admin can restructure the management hierarchy.'
       : 'This is the organisation hierarchy (view only). Use ⋯ on your own card to request a move once your tasks are done.'
 
   return (

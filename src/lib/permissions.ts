@@ -111,12 +111,18 @@ export function can(user: Employee | null, action: Action, ctx: Ctx = {}): boole
 }
 
 /**
- * Can `user` restructure (drag/reassign) `target` in the org tree?
- * Only admins may edit the organisation hierarchy.
+ * Can `user` drag/reassign `target` in the org tree?
+ * Admins may move anyone — they own the management hierarchy.
+ * Managers may only shuffle members (individual contributors); moving a
+ * Manager or Admin would restructure the reporting chain, which stays
+ * admin-only. (Where a member may land is enforced separately — see the
+ * drop-target check in TeamsScreen.)
  */
 export function canRestructure(user: Employee | null, target: Employee): boolean {
   if (!user || target.id === user.id) return false
-  return user.role === 'Admin'
+  if (user.role === 'Admin') return true
+  if (user.role === 'Manager') return target.role === 'Member'
+  return false
 }
 
 /** A member may only request a team move once all their assigned tickets are Done. */
