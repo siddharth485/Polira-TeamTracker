@@ -35,5 +35,15 @@ services:
         sync: false
       - key: PACWIN_MEMBER_EMAILS
         sync: false
+      - key: EXTRA_ALLOWED_EMAILS
+        sync: false # external (non-@pacwinindia.com) members allowed to sign in
+      # Service account: powers Sheet persistence for ALL users + Gmail sending
+      # (domain-wide delegation impersonating GMAIL_USER). Paste the full JSON key.
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GMAIL_USER
+        sync: false # sender address, e.g. sandhya@pacwinindia.com
+      - key: GMAIL_APP_PASSWORD
+        sync: false # only if NOT using the service account for email
       - key: ANTHROPIC_API_KEY
         sync: false # optional — enables real LLM profile insights

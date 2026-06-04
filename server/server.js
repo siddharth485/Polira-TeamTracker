@@ -68,12 +68,79 @@ function isAllowedEmail(email) {
   )
 }
 
-// ── Email (notifications) ───────────────────────────────────────────────────
+// ── Service account (Sheets persistence + Gmail via domain-wide delegation) ──
 const mailUser = process.env.GMAIL_USER || 'sandhya@pacwinindia.com'
+
+function loadServiceAccount() {
+  let raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+  if (!raw) return null
+  try {
+    if (!raw.trim().startsWith('{')) raw = Buffer.from(raw, 'base64').toString('utf8')
+    const sa = JSON.parse(raw)
+    if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, '\n')
+    return sa.client_email && sa.private_key ? sa : null
+  } catch {
+    return null
+  }
+}
+
+const serviceAccount = loadServiceAccount()
+
+// Service-account Sheets client: the server reads/writes the Sheet itself, so
+// persistence works for every signed-in user (incl. external ones) regardless of
+// whether their own Google account can access the Sheet.
+const saSheets = serviceAccount
+  ? google.sheets({
+      version: 'v4',
+      auth: new google.auth.JWT({
+        email: serviceAccount.client_email,
+        key: serviceAccount.private_key,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      }),
+    })
+  : null
+
+// Service-account Gmail client: impersonates the sender (mailUser) via
+// domain-wide delegation to send notification emails — no app password.
+const saGmail = serviceAccount
+  ? google.gmail({
+      version: 'v1',
+      auth: new google.auth.JWT({
+        email: serviceAccount.client_email,
+        key: serviceAccount.private_key,
+        scopes: ['https://www.googleapis.com/auth/gmail.send'],
+        subject: mailUser,
+      }),
+    })
+  : null
+
+// Optional fallback: nodemailer via app password (only if no service account).
 const mailPass = process.env.GMAIL_APP_PASSWORD
-const mailer = mailPass
+const smtpMailer = !serviceAccount && mailPass
   ? nodemailer.createTransport({ service: 'gmail', auth: { user: mailUser, pass: mailPass } })
   : null
+
+const emailEnabled = Boolean(saGmail || smtpMailer)
+
+async function sendEmail({ to, subject, text, html }) {
+  if (saGmail) {
+    const message = [
+      `From: Polira <${mailUser}>`,
+      `To: ${to}`,
+      `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=UTF-8',
+      '',
+      html,
+    ].join('\r\n')
+    const raw = Buffer.from(message).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    await saGmail.users.messages.send({ userId: 'me', requestBody: { raw } })
+    return
+  }
+  if (smtpMailer) {
+    await smtpMailer.sendMail({ from: `Polira <${mailUser}>`, to, subject, text, html })
+  }
+}
 
 function parseEmailList(value) {
   if (!value) {
@@ -126,6 +193,10 @@ function buildOAuthClient() {
 }
 
 function getAuthorizedSheetsClient(user) {
+  // Prefer the service account so persistence works for every user (incl.
+  // external members whose own account can't access the Sheet).
+  if (saSheets) return saSheets
+
   if (!user || !user.tokens) {
     throw new Error('Session is missing Google OAuth tokens')
   }
@@ -535,7 +606,7 @@ app.post('/api/data', requireAuth, persistToSheets)
 // The frontend posts a structured event; the server composes & sends the email
 // (so the body can't be set by the caller). Recipients must be allowed members.
 app.post('/api/notify', requireAuth, async (req, res) => {
-  if (!mailer) {
+  if (!emailEnabled) {
     return res.json({ sent: false, reason: 'email-not-configured' })
   }
   try {
@@ -569,7 +640,7 @@ app.post('/api/notify', requireAuth, async (req, res) => {
       </div>`
     const text = `${headline}\n${title}${id ? ` (${id})` : ''}\n${detail || ''}\n\nOpen Polira: ${appUrl}`
 
-    await mailer.sendMail({ from: `Polira <${mailUser}>`, to, subject, text, html })
+    await sendEmail({ to, subject, text, html })
     return res.json({ sent: true })
   } catch (error) {
     return res.json({ sent: false, reason: 'send-failed' })
