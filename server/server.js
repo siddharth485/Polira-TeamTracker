@@ -528,10 +528,25 @@ async function persistToSheets(req, res) {
   }
 }
 
-app.get('/api/config', (_req, res) => {
+app.get('/api/config', async (_req, res) => {
+  // Probe whether the service account can actually reach the Sheet — this is the
+  // usual cause of "changes don't persist for everyone".
+  let sheetAccess = 'untested'
+  if (saSheets && spreadsheetId) {
+    try {
+      await saSheets.spreadsheets.get({ spreadsheetId, fields: 'spreadsheetId' })
+      sheetAccess = 'ok'
+    } catch (error) {
+      sheetAccess = `denied: ${error?.message?.slice(0, 80) || 'error'}`
+    }
+  }
   res.json({
     sheetConfigured: hasRealSheetConfig(),
     googleConfigured: hasRealGoogleConfig(),
+    serviceAccount: Boolean(saSheets),
+    serviceAccountEmail: serviceAccount?.client_email || null,
+    email: emailEnabled,
+    sheetAccess,
     frontendOrigin,
   })
 })

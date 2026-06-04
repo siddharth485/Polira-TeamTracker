@@ -21,9 +21,12 @@ type Props = {
 }
 
 export function Topbar({ screen, query, onQuery, onNewTicket }: Props) {
-  const { syncState } = useStore()
-  const syncLabel =
-    syncState === 'synced' ? 'Live' : syncState === 'saving' ? 'Syncing…' : 'Local'
+  const { syncState, auth } = useStore()
+  // Signed in but failing to sync = changes aren't reaching the shared Sheet.
+  const notSynced = Boolean(auth) && syncState === 'local'
+  const syncLabel = notSynced
+    ? 'Not saved'
+    : syncState === 'synced' ? 'Live' : syncState === 'saving' ? 'Syncing…' : 'Local'
 
   return (
     <header className="topbar">
@@ -39,8 +42,8 @@ export function Topbar({ screen, query, onQuery, onNewTicket }: Props) {
         />
       </div>
 
-      <div className="live-pill">
-        <span className={`live-dot ${syncState === 'saving' ? 'saving' : syncState === 'synced' ? '' : 'local'}`} />
+      <div className={`live-pill ${notSynced ? 'not-synced' : ''}`} title={notSynced ? 'Your changes are NOT saving to the shared sheet — only on this device.' : ''}>
+        <span className={`live-dot ${notSynced ? 'error' : syncState === 'saving' ? 'saving' : syncState === 'synced' ? '' : 'local'}`} />
         {syncLabel}
       </div>
 
