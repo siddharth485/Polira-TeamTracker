@@ -2,6 +2,7 @@ import express from 'express'
 import cookieSession from 'cookie-session'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import nodemailer from 'nodemailer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
@@ -50,6 +51,29 @@ const SCOPES = [
 const adminEmails = parseEmailList(process.env.PACWIN_ADMIN_EMAILS)
 const managerEmails = parseEmailList(process.env.PACWIN_MANAGER_EMAILS)
 const memberEmails = parseEmailList(process.env.PACWIN_MEMBER_EMAILS)
+// Extra emails that may sign in (e.g. team members outside the @pacwinindia.com
+// domain). Configurable via env, plus a built-in list for known external members.
+const extraAllowedEmails = parseEmailList(process.env.EXTRA_ALLOWED_EMAILS)
+const builtinAllowedEmails = ['nikhilvns181@gmail.com']
+
+function isAllowedEmail(email) {
+  const e = String(email || '').toLowerCase()
+  return (
+    e.endsWith('@pacwinindia.com') ||
+    adminEmails.includes(e) ||
+    managerEmails.includes(e) ||
+    memberEmails.includes(e) ||
+    extraAllowedEmails.includes(e) ||
+    builtinAllowedEmails.includes(e)
+  )
+}
+
+// ── Email (notifications) ───────────────────────────────────────────────────
+const mailUser = process.env.GMAIL_USER || 'sandhya@pacwinindia.com'
+const mailPass = process.env.GMAIL_APP_PASSWORD
+const mailer = mailPass
+  ? nodemailer.createTransport({ service: 'gmail', auth: { user: mailUser, pass: mailPass } })
+  : null
 
 function parseEmailList(value) {
   if (!value) {
@@ -474,8 +498,8 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const userInfo = await oauth2.userinfo.get()
     const email = String(userInfo.data.email || '')
 
-    if (!email.endsWith('@pacwinindia.com')) {
-      return res.redirect(`${frontendOrigin}/?auth=error&message=Only+@pacwinindia.com+accounts+can+sign+in`)
+    if (!isAllowedEmail(email)) {
+      return res.redirect(`${frontendOrigin}/?auth=error&message=This+Google+account+is+not+a+registered+Polira+team+member`)
     }
 
     // Keep only the tokens needed for Sheets API calls; drop the large id_token
@@ -506,6 +530,51 @@ app.post('/api/auth/logout', (req, res) => {
 
 app.get('/api/data', requireAuth, restoreFromSheets)
 app.post('/api/data', requireAuth, persistToSheets)
+
+// ── Ticket notifications ────────────────────────────────────────────────────
+// The frontend posts a structured event; the server composes & sends the email
+// (so the body can't be set by the caller). Recipients must be allowed members.
+app.post('/api/notify', requireAuth, async (req, res) => {
+  if (!mailer) {
+    return res.json({ sent: false, reason: 'email-not-configured' })
+  }
+  try {
+    const { to, kind, ticketId, ticketTitle, actorName, detail } = req.body || {}
+    if (!to || !isAllowedEmail(to)) {
+      return res.status(400).json({ sent: false, reason: 'invalid-recipient' })
+    }
+
+    const title = String(ticketTitle || 'a ticket')
+    const id = String(ticketId || '')
+    const actor = String(actorName || 'A teammate')
+    const appUrl = frontendOrigin
+    const assigned = kind === 'assigned'
+    const subject = assigned
+      ? `[Polira] You've been assigned: ${title}${id ? ` (${id})` : ''}`
+      : `[Polira] Update on ${title}${id ? ` (${id})` : ''}`
+    const headline = assigned
+      ? `${actor} assigned you a ticket`
+      : `${actor} updated a ticket assigned to you`
+    const detailLine = detail ? `<p style="margin:8px 0;color:#475569">${String(detail)}</p>` : ''
+
+    const html = `
+      <div style="font-family:Inter,Segoe UI,system-ui,sans-serif;max-width:520px">
+        <p style="font-size:13px;font-weight:700;letter-spacing:.12em;color:#ec4899;margin:0 0 6px">POLIRA · PACWIN INDIA</p>
+        <h2 style="margin:0 0 4px;color:#1e2438">${headline}</h2>
+        <p style="margin:0 0 2px;font-size:16px;font-weight:700;color:#1e2438">${title}</p>
+        ${id ? `<p style="margin:0 0 8px;font-family:monospace;color:#94a3b8;font-size:12px">${id}</p>` : ''}
+        ${detailLine}
+        <a href="${appUrl}" style="display:inline-block;margin-top:12px;background:#6d5efc;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600">Open Polira</a>
+        <p style="margin-top:18px;font-size:12px;color:#94a3b8">You're receiving this because you're assigned to or reported this ticket in Polira.</p>
+      </div>`
+    const text = `${headline}\n${title}${id ? ` (${id})` : ''}\n${detail || ''}\n\nOpen Polira: ${appUrl}`
+
+    await mailer.sendMail({ from: `Polira <${mailUser}>`, to, subject, text, html })
+    return res.json({ sent: true })
+  } catch (error) {
+    return res.json({ sent: false, reason: 'send-failed' })
+  }
+})
 
 // ── AI insight hook ─────────────────────────────────────────────────────────
 // Returns a Claude-generated insight when ANTHROPIC_API_KEY is configured;

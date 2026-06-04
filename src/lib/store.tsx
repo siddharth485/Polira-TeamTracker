@@ -30,6 +30,7 @@ import type {
 } from '../types'
 import { createId } from './format'
 import { initials } from '../config/workItems'
+import { sendNotify } from './notify'
 
 const STORAGE_KEY = 'polira-cache-v6'
 const THEME_KEY = 'polira-theme'
@@ -178,6 +179,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     authNameRef.current = currentUser?.name ?? auth?.name ?? 'You'
   }, [currentUser, auth])
 
+  // Latest data snapshot for use inside action handlers (e.g. email lookups).
+  const dataRef = useRef(data)
+  useEffect(() => {
+    dataRef.current = data
+  }, [data])
+  const emailForName = (name: string): string =>
+    dataRef.current.employees.find((e) => e.name === name)?.email ?? ''
+
   // ── Theme ────────────────────────────────────────────────────────────────
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -306,6 +315,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatedAt: now,
     }
     setData((prev) => ({ ...prev, tickets: [ticket, ...prev.tickets] }))
+    // Notify the assignee (unless they assigned it to themselves).
+    if (ticket.assignee && ticket.assignee !== authNameRef.current) {
+      sendNotify({
+        to: emailForName(ticket.assignee),
+        kind: 'assigned',
+        ticketId: ticket.id,
+        ticketTitle: ticket.title,
+        actorName: authNameRef.current,
+      })
+    }
     return ticket
   }, [])
 
@@ -337,14 +356,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const updateTicket = useCallback<Store['updateTicket']>((id, patch) => {
     const by = authNameRef.current
-    setData((prev) => ({
-      ...prev,
-      tickets: prev.tickets.map((t) =>
+    const prev = dataRef.current.tickets.find((t) => t.id === id)
+    setData((s) => ({
+      ...s,
+      tickets: s.tickets.map((t) =>
         t.id === id
           ? { ...t, ...patch, updatedAt: new Date().toISOString(), history: [...t.history, ...describeChanges(t, patch, by)] }
           : t,
       ),
     }))
+    // Email the affected assignee on meaningful changes (skip self-changes).
+    if (prev) {
+      const title = patch.title ?? prev.title
+      if (patch.assignee && patch.assignee !== prev.assignee && patch.assignee !== by) {
+        sendNotify({ to: emailForName(patch.assignee), kind: 'assigned', ticketId: id, ticketTitle: title, actorName: by })
+      } else {
+        const statusChanged = patch.status !== undefined && patch.status !== prev.status
+        const dueChanged = patch.dueDate !== undefined && patch.dueDate !== prev.dueDate
+        const assignee = patch.assignee ?? prev.assignee
+        if ((statusChanged || dueChanged) && assignee && assignee !== by) {
+          const detail = statusChanged
+            ? `Status changed to “${patch.status}”.`
+            : `Due date changed to ${patch.dueDate || '—'}.`
+          sendNotify({ to: emailForName(assignee), kind: 'updated', ticketId: id, ticketTitle: title, actorName: by, detail })
+        }
+      }
+    }
   }, [])
 
   const moveTicket = useCallback<Store['moveTicket']>(
