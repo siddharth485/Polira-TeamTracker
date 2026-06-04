@@ -234,12 +234,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const fresh = await dataRes.json()
           skipNextPush.current = true
           setData((prev) => ({
+            // The Sheet is the source of truth for tickets/comments/requests/
+            // feedback — trust it verbatim (even when empty) so deletes stick and
+            // we don't resurrect seed data. Keep the seed roster/projects only if
+            // the Sheet hasn't been populated with them yet.
             projects: fresh.projects?.length ? fresh.projects : prev.projects,
-            tickets: fresh.tickets?.length ? fresh.tickets : prev.tickets,
+            tickets: Array.isArray(fresh.tickets) ? fresh.tickets : prev.tickets,
             employees: fresh.employees?.length ? fresh.employees : prev.employees,
-            comments: fresh.comments ?? prev.comments,
-            requests: fresh.requests ?? prev.requests,
-            feedback: fresh.feedback ?? prev.feedback,
+            comments: Array.isArray(fresh.comments) ? fresh.comments : prev.comments,
+            requests: Array.isArray(fresh.requests) ? fresh.requests : prev.requests,
+            feedback: Array.isArray(fresh.feedback) ? fresh.feedback : prev.feedback,
           }))
           setSyncState('synced')
           setStatusMessage(`Synced to Google Sheets for ${payload.user.name}`)
