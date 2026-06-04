@@ -561,11 +561,11 @@ async function restoreFromSheets(req, res) {
 
     const payload = {
       projects: parseProjects(projectsResponse.data.values || []),
-      tickets: parseTickets(ticketsResponse.data.values || []),
+      tickets: stripSeed(parseTickets(ticketsResponse.data.values || []), SEED_TICKET_IDS),
       employees: parseEmployees(employeesResponse.data.values || []),
-      comments: parseComments(commentsResponse.data.values || []),
+      comments: stripSeed(parseComments(commentsResponse.data.values || []), SEED_COMMENT_IDS),
       requests: parseRequests(requestsResponse.data.values || []),
-      feedback: parseFeedback(feedbackResponse.data.values || []),
+      feedback: stripSeed(parseFeedback(feedbackResponse.data.values || []), SEED_FEEDBACK_IDS),
     }
 
     return res.json(payload)
@@ -574,6 +574,23 @@ async function restoreFromSheets(req, res) {
       error: error instanceof Error ? error.message : 'Unable to read Google Sheets data',
     })
   }
+}
+
+// ── Seed/test data purge ────────────────────────────────────────────────────
+// Older buggy builds wrote the app's demo records into the real Sheet. Because
+// the merge keeps every row already in the Sheet, those test rows would live
+// forever. We strip them on every READ and WRITE so they can never reappear, no
+// matter what a stale client pushes. IDs mirror src/data/seed.ts (tickets +
+// their comments + demo feedback). Employees/projects are left alone — the seed
+// roster IDs may be the team's real records.
+const SEED_TICKET_IDS = new Set([
+  'TKT-MPKRIVUC', 'TKT-MPKRMINA', 'TKT-MPL49J1M', 'TKT-CONTENT1', 'TKT-DATA0001', 'TKT-SURVEY01', 'TKT-REPORT01',
+])
+const SEED_COMMENT_IDS = new Set(['CMT-001', 'CMT-002'])
+const SEED_FEEDBACK_IDS = new Set(['FB-001'])
+
+function stripSeed(records, idSet) {
+  return (records || []).filter((r) => !(r && idSet.has(r.id)))
 }
 
 // Merge an incoming collection into what's already in the Sheet, keyed by id.
@@ -622,11 +639,13 @@ async function persistToSheets(req, res) {
     ])
 
     const mergedProjects = mergeById(parseProjects(curProjects.data.values || []), projects)
-    const mergedTickets = mergeById(parseTickets(curTickets.data.values || []), tickets)
+    // Strip the demo/test rows on write too, so they're purged from the Sheet
+    // the first time anyone saves and can never be resurrected by a stale client.
+    const mergedTickets = stripSeed(mergeById(parseTickets(curTickets.data.values || []), tickets), SEED_TICKET_IDS)
     const mergedEmployees = mergeById(parseEmployees(curEmployees.data.values || []), employees)
-    const mergedComments = mergeById(parseComments(curComments.data.values || []), comments)
+    const mergedComments = stripSeed(mergeById(parseComments(curComments.data.values || []), comments), SEED_COMMENT_IDS)
     const mergedRequests = mergeById(parseRequests(curRequests.data.values || []), requests)
-    const mergedFeedback = mergeById(parseFeedback(curFeedback.data.values || []), feedback)
+    const mergedFeedback = stripSeed(mergeById(parseFeedback(curFeedback.data.values || []), feedback), SEED_FEEDBACK_IDS)
 
     await Promise.all([
       sheetsClient.spreadsheets.values.clear({ spreadsheetId, range: 'Projects' }),
@@ -664,14 +683,34 @@ app.get('/api/config', async (_req, res) => {
   // Probe whether the service account can actually reach the Sheet — this is the
   // usual cause of "changes don't persist for everyone".
   let sheetAccess = 'untested'
+  let tabs
   if (saSheets && spreadsheetId) {
     try {
-      await saSheets.spreadsheets.get({ spreadsheetId, fields: 'spreadsheetId' })
+      const meta = await saSheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties.title' })
       sheetAccess = 'ok'
+      tabs = (meta.data.sheets || []).map((s) => s.properties?.title)
     } catch (error) {
       sheetAccess = `denied: ${error?.message?.slice(0, 80) || 'error'}`
     }
   }
+
+  // ?debug=1 — show what the app actually reads from the canonical tabs, so a
+  // tab-name mismatch or lingering seed rows are obvious. Metadata only.
+  let debug
+  if (_req.query?.debug === '1' && saSheets && spreadsheetId) {
+    try {
+      const t = await saSheets.spreadsheets.values.get({ spreadsheetId, range: 'Tickets!A1:ZZ' })
+      const rows = (t.data.values || []).slice(1).filter((r) => r[0])
+      debug = {
+        ticketsTabRows: rows.length,
+        seedTicketsStillPresent: rows.filter((r) => SEED_TICKET_IDS.has(String(r[0]))).map((r) => String(r[0])),
+        ticketIds: rows.map((r) => ({ id: String(r[0]), deleted: String(r[20] || '').toUpperCase() === 'TRUE' })),
+      }
+    } catch (error) {
+      debug = { error: error?.message?.slice(0, 120) || 'read failed' }
+    }
+  }
+
   res.json({
     sheetConfigured: hasRealSheetConfig(),
     googleConfigured: hasRealGoogleConfig(),
@@ -679,6 +718,8 @@ app.get('/api/config', async (_req, res) => {
     persistsForEveryone: Boolean(saSheets),
     email: emailEnabled,
     sheetAccess,
+    tabs, // every tab title in the spreadsheet — confirms naming the app expects
+    debug,
     frontendOrigin,
   })
 })
