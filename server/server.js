@@ -1,5 +1,5 @@
 import express from 'express'
-import session from 'express-session'
+import cookieSession from 'cookie-session'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import path from 'node:path'
@@ -27,16 +27,16 @@ const spreadsheetId = process.env.GOOGLE_SHEET_ID || ''
 app.set('trust proxy', 1)
 app.use(cors({ origin: frontendOrigin, credentials: true }))
 app.use(express.json())
+// Stateless session stored in a signed, httpOnly cookie — survives restarts,
+// redeploys and scaling with no server-side store (no MemoryStore, no DB).
 app.use(
-  session({
-    secret: process.env.SESSION_SECRET || 'polira-local-secret',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isProd, // HTTPS-only cookies in production
-    },
+  cookieSession({
+    name: 'polira.sid',
+    keys: [process.env.SESSION_SECRET || 'polira-local-secret'],
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProd, // HTTPS-only in production
   })
 )
 
@@ -478,12 +478,15 @@ app.get('/api/auth/google/callback', async (req, res) => {
       return res.redirect(`${frontendOrigin}/?auth=error&message=Only+@pacwinindia.com+accounts+can+sign+in`)
     }
 
+    // Keep only the tokens needed for Sheets API calls; drop the large id_token
+    // so the whole session fits comfortably inside the cookie's ~4KB limit.
+    const { access_token, refresh_token, expiry_date, token_type, scope } = tokens
     req.session.user = {
       email,
       name: String(userInfo.data.name || email.split('@')[0]),
       picture: String(userInfo.data.picture || ''),
       role: resolveRole(email),
-      tokens,
+      tokens: { access_token, refresh_token, expiry_date, token_type, scope },
     }
 
     return res.redirect(`${frontendOrigin}/?auth=success`)
@@ -497,9 +500,8 @@ app.get('/api/auth/session', (req, res) => {
 })
 
 app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(() => {
-    res.json({ ok: true })
-  })
+  req.session = null // cookie-session: clearing the session removes the cookie
+  res.json({ ok: true })
 })
 
 app.get('/api/data', requireAuth, restoreFromSheets)
