@@ -134,6 +134,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // right after we hydrate FROM the server, to avoid echoing it straight back).
   const skipNextPush = useRef(false)
 
+  // Becomes true only AFTER the first successful read from the Sheet. Until
+  // then we must never push: logging in flips `auth`, which fires the push
+  // effect while `data` is still the stale localStorage cache (or seed data) —
+  // pushing it would clobber the Sheet (wiping other people's tickets and
+  // resurrecting deleted ones) before we've even read the real data.
+  const hasHydrated = useRef(false)
+
   // The real operator. Identity ONLY comes from a signed-in Google account —
   // no login means no access (handled by the login gate in App). A signed-in
   // @pacwinindia.com email maps to its employee record (role from there);
@@ -233,6 +240,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (dataRes.ok && mounted) {
           const fresh = await dataRes.json()
           skipNextPush.current = true
+          hasHydrated.current = true
           setData((prev) => ({
             // The Sheet is the source of truth for tickets/comments/requests/
             // feedback — trust it verbatim (even when empty) so deletes stick and
@@ -268,6 +276,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     persistCache(data)
     if (!auth) return
+    // Never push before we've read the Sheet — otherwise the auth change that
+    // happens at login pushes our stale local cache over everyone else's data.
+    if (!hasHydrated.current) return
     if (skipNextPush.current) {
       skipNextPush.current = false
       return

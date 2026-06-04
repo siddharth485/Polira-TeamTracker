@@ -68,6 +68,65 @@ function isAllowedEmail(email) {
   )
 }
 
+// People recorded in the Sheet may sign in too — this is how external members
+// (outside @pacwinindia.com) are granted access without an env change. We read
+// with the server's own identity (the signing-in user isn't authorized yet)
+// and cache the result briefly so the OAuth callback stays fast.
+//
+// We read TWO places:
+//   • `Master` — a manually-maintained allowlist tab. The app NEVER overwrites
+//     it (it only clears/rewrites the six known tabs), so hand-added members
+//     here are permanent. Any cell that looks like an email is accepted, so the
+//     column layout doesn't matter.
+//   • `Employees` — the app-managed roster (col D = email, col G = active).
+//     Note: rows added here BY HAND can be wiped when a client saves, because
+//     the app rewrites this tab from its own state. Use `Master` for durable
+//     manual entries; use the app's "add employee" for managed ones.
+let sheetEmailCache = { at: 0, emails: new Set() }
+const SHEET_EMAIL_TTL_MS = 60 * 1000
+const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i
+
+async function readEmailsFromTab(range, pick) {
+  try {
+    const res = await saSheets.spreadsheets.values.get({ spreadsheetId, range })
+    return pick(res.data.values || [])
+  } catch {
+    return [] // tab may not exist (e.g. no Master yet) — ignore
+  }
+}
+
+async function emailsAllowedFromSheet() {
+  if (!saSheets || !spreadsheetId) return new Set()
+  if (Date.now() - sheetEmailCache.at < SHEET_EMAIL_TTL_MS) return sheetEmailCache.emails
+  try {
+    const [masterEmails, employeeEmails] = await Promise.all([
+      // Master: scan every cell, accept anything email-shaped (layout-agnostic).
+      readEmailsFromTab('Master!A1:ZZ', (rows) =>
+        rows.flat().map((v) => String(v || '').trim()).filter((v) => EMAIL_RE.test(v)),
+      ),
+      // Employees: col D = email, only if not explicitly deactivated (col G).
+      readEmailsFromTab('Employees!A1:ZZ', (rows) =>
+        rows
+          .slice(1)
+          .filter((row) => row[0] && String(row[6] || 'TRUE').toUpperCase() !== 'FALSE')
+          .map((row) => String(row[3] || '').trim())
+          .filter(Boolean),
+      ),
+    ])
+    const emails = new Set([...masterEmails, ...employeeEmails].map((e) => e.toLowerCase()))
+    sheetEmailCache = { at: Date.now(), emails }
+    return emails
+  } catch {
+    return sheetEmailCache.emails // fall back to last known good list
+  }
+}
+
+async function isAllowedToSignIn(email) {
+  if (isAllowedEmail(email)) return true
+  const sheetEmails = await emailsAllowedFromSheet()
+  return sheetEmails.has(String(email || '').toLowerCase())
+}
+
 // ── Service account (Sheets persistence + Gmail via domain-wide delegation) ──
 const mailUser = process.env.GMAIL_USER || 'sandhya@pacwinindia.com'
 
@@ -599,7 +658,7 @@ app.get('/api/auth/google/callback', async (req, res) => {
     const userInfo = await oauth2.userinfo.get()
     const email = String(userInfo.data.email || '')
 
-    if (!isAllowedEmail(email)) {
+    if (!(await isAllowedToSignIn(email))) {
       return res.redirect(`${frontendOrigin}/?auth=error&message=This+Google+account+is+not+a+registered+Polira+team+member`)
     }
 
@@ -641,7 +700,7 @@ app.post('/api/notify', requireAuth, async (req, res) => {
   }
   try {
     const { to, kind, ticketId, ticketTitle, actorName, detail } = req.body || {}
-    if (!to || !isAllowedEmail(to)) {
+    if (!to || !(await isAllowedToSignIn(to))) {
       return res.status(400).json({ sent: false, reason: 'invalid-recipient' })
     }
 
