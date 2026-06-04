@@ -124,7 +124,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [statusMessage, setStatusMessage] = useState(initialStatusMessage)
 
   const [data, setData] = useState<CachedState>(loadCache)
-  const { projects, tickets, employees, comments, requests, feedback } = data
+  const { projects, requests, feedback } = data
+
+  // Tombstoned records stay in `data` (so they persist to the Sheet and survive
+  // the server merge) but must never be shown. Filter them out once here — every
+  // UI consumer reads these via the store, so this is the single choke point.
+  const tickets = useMemo(() => data.tickets.filter((t) => !t.deleted), [data.tickets])
+  const comments = useMemo(() => data.comments.filter((c) => !c.deleted), [data.comments])
+  const employees = useMemo(() => data.employees.filter((e) => !e.deleted), [data.employees])
 
   // Empty = act as yourself. Only an admin's explicit selection previews someone else.
   // Not persisted, so every login starts as the real signed-in person.
@@ -148,7 +155,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // resolved from the email, with no team placement.
   const realUser = useMemo<Employee | null>(() => {
     if (!auth) return null
-    const match = employees.find((e) => e.email.toLowerCase() === auth.email.toLowerCase())
+    const match = employees.find((e) => !e.deleted && e.email.toLowerCase() === auth.email.toLowerCase())
     if (match) return match
     return {
       id: auth.email,
@@ -192,7 +199,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dataRef.current = data
   }, [data])
   const emailForName = (name: string): string =>
-    dataRef.current.employees.find((e) => e.name === name)?.email ?? ''
+    dataRef.current.employees.find((e) => !e.deleted && e.name === name)?.email ?? ''
 
   // ── Theme ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -408,7 +415,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!text.trim()) return
     const now = new Date().toISOString()
     const by = authNameRef.current
-    const comment: Comment = { id: createId('CMT'), ticketId, author: by, text: text.trim(), createdAt: now }
+    const comment: Comment = { id: createId('CMT'), ticketId, author: by, text: text.trim(), createdAt: now, updatedAt: now }
     setData((prev) => ({
       ...prev,
       comments: [...prev.comments, comment],
@@ -420,21 +427,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const editComment = useCallback<Store['editComment']>((id, text) => {
     if (!text.trim()) return
+    const now = new Date().toISOString()
     setData((prev) => ({
       ...prev,
-      comments: prev.comments.map((c) => (c.id === id ? { ...c, text: text.trim() } : c)),
+      comments: prev.comments.map((c) => (c.id === id ? { ...c, text: text.trim(), updatedAt: now } : c)),
     }))
   }, [])
 
   const deleteComment = useCallback<Store['deleteComment']>((id) => {
-    setData((prev) => ({ ...prev, comments: prev.comments.filter((c) => c.id !== id) }))
+    const now = new Date().toISOString()
+    setData((prev) => ({
+      ...prev,
+      comments: prev.comments.map((c) => (c.id === id ? { ...c, deleted: true, updatedAt: now } : c)),
+    }))
   }, [])
 
   const deleteTicket = useCallback<Store['deleteTicket']>((id) => {
+    const now = new Date().toISOString()
+    // Soft-delete (tombstone) instead of dropping the row, so the server merge
+    // keeps the deletion and a stale client can't resurrect the ticket.
     setData((prev) => ({
       ...prev,
-      tickets: prev.tickets.filter((t) => t.id !== id),
-      comments: prev.comments.filter((c) => c.ticketId !== id), // cascade
+      tickets: prev.tickets.map((t) => (t.id === id ? { ...t, deleted: true, updatedAt: now } : t)),
+      comments: prev.comments.map((c) => (c.ticketId === id ? { ...c, deleted: true, updatedAt: now } : c)), // cascade
     }))
   }, [])
 
@@ -465,14 +480,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .slice(0, 2)
         .join('')
         .toUpperCase(),
+      updatedAt: new Date().toISOString(),
     }
     setData((prev) => ({ ...prev, employees: [...prev.employees, employee] }))
   }, [])
 
   const toggleEmployeeActive = useCallback<Store['toggleEmployeeActive']>((id) => {
+    const now = new Date().toISOString()
     setData((prev) => ({
       ...prev,
-      employees: prev.employees.map((e) => (e.id === id ? { ...e, active: !e.active } : e)),
+      employees: prev.employees.map((e) => (e.id === id ? { ...e, active: !e.active, updatedAt: now } : e)),
     }))
   }, [])
 
@@ -504,7 +521,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (req.type === 'team-move' && req.employeeId) {
           employees = employees.map((e) =>
             e.id === req.employeeId
-              ? { ...e, team: (req.targetTeam || e.team) as Team, managerId: req.targetManagerId || e.managerId }
+              ? { ...e, team: (req.targetTeam || e.team) as Team, managerId: req.targetManagerId || e.managerId, updatedAt: now }
               : e,
           )
         }
@@ -533,27 +550,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const moveEmployee = useCallback<Store['moveEmployee']>((id, team, managerId) => {
+    const now = new Date().toISOString()
     setData((prev) => ({
       ...prev,
-      employees: prev.employees.map((e) => (e.id === id ? { ...e, team, managerId } : e)),
+      employees: prev.employees.map((e) => (e.id === id ? { ...e, team, managerId, updatedAt: now } : e)),
     }))
   }, [])
 
   const setEmployeeManager = useCallback<Store['setEmployeeManager']>((id, managerId) => {
+    const now = new Date().toISOString()
     setData((prev) => ({
       ...prev,
-      employees: prev.employees.map((e) => (e.id === id ? { ...e, managerId } : e)),
+      employees: prev.employees.map((e) => (e.id === id ? { ...e, managerId, updatedAt: now } : e)),
     }))
   }, [])
 
   const removeEmployee = useCallback<Store['removeEmployee']>((id) => {
-    setData((prev) => ({
-      ...prev,
-      // Re-parent anyone reporting to the removed person up one level.
-      employees: prev.employees
-        .filter((e) => e.id !== id)
-        .map((e) => (e.managerId === id ? { ...e, managerId: prev.employees.find((m) => m.id === id)?.managerId ?? '' } : e)),
-    }))
+    const now = new Date().toISOString()
+    setData((prev) => {
+      const grandparent = prev.employees.find((m) => m.id === id)?.managerId ?? ''
+      return {
+        ...prev,
+        // Tombstone the removed person (kept for the server merge) and re-parent
+        // anyone reporting to them up one level.
+        employees: prev.employees.map((e) =>
+          e.id === id
+            ? { ...e, deleted: true, updatedAt: now }
+            : e.managerId === id
+              ? { ...e, managerId: grandparent, updatedAt: now }
+              : e,
+        ),
+      }
+    })
   }, [])
 
   const login = useCallback(() => {

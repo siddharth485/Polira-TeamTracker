@@ -104,11 +104,17 @@ async function emailsAllowedFromSheet() {
       readEmailsFromTab('Master!A1:ZZ', (rows) =>
         rows.flat().map((v) => String(v || '').trim()).filter((v) => EMAIL_RE.test(v)),
       ),
-      // Employees: col D = email, only if not explicitly deactivated (col G).
+      // Employees: col D = email, only if not deactivated (col G) or
+      // tombstoned (col M = deleted).
       readEmailsFromTab('Employees!A1:ZZ', (rows) =>
         rows
           .slice(1)
-          .filter((row) => row[0] && String(row[6] || 'TRUE').toUpperCase() !== 'FALSE')
+          .filter(
+            (row) =>
+              row[0] &&
+              String(row[6] || 'TRUE').toUpperCase() !== 'FALSE' &&
+              String(row[12] || 'FALSE').toUpperCase() !== 'TRUE',
+          )
           .map((row) => String(row[3] || '').trim())
           .filter(Boolean),
       ),
@@ -307,7 +313,7 @@ function flattenProjects(projects) {
 
 function flattenTickets(tickets) {
   return [
-    ['id', 'title', 'description', 'type', 'projectId', 'team', 'subTeam', 'status', 'priority', 'dueDate', 'assignee', 'reporter', 'source', 'tags', 'archived', 'archivedBy', 'archivedAt', 'createdAt', 'updatedAt', 'history'],
+    ['id', 'title', 'description', 'type', 'projectId', 'team', 'subTeam', 'status', 'priority', 'dueDate', 'assignee', 'reporter', 'source', 'tags', 'archived', 'archivedBy', 'archivedAt', 'createdAt', 'updatedAt', 'history', 'deleted'],
     ...tickets.map((ticket) => [
       ticket.id,
       ticket.title,
@@ -329,13 +335,14 @@ function flattenTickets(tickets) {
       ticket.createdAt || '',
       ticket.updatedAt || '',
       JSON.stringify(ticket.history || []),
+      ticket.deleted ? 'TRUE' : 'FALSE',
     ]),
   ]
 }
 
 function flattenEmployees(employees) {
   return [
-    ['id', 'name', 'code', 'email', 'team', 'role', 'active', 'avatar', 'managerId', 'gender', 'photo'],
+    ['id', 'name', 'code', 'email', 'team', 'role', 'active', 'avatar', 'managerId', 'gender', 'photo', 'updatedAt', 'deleted'],
     ...employees.map((employee) => [
       employee.id,
       employee.name,
@@ -348,19 +355,23 @@ function flattenEmployees(employees) {
       employee.managerId || '',
       employee.gender || 'male',
       employee.photo || '',
+      employee.updatedAt || '',
+      employee.deleted ? 'TRUE' : 'FALSE',
     ]),
   ]
 }
 
 function flattenComments(comments) {
   return [
-    ['id', 'ticketId', 'author', 'text', 'createdAt'],
+    ['id', 'ticketId', 'author', 'text', 'createdAt', 'updatedAt', 'deleted'],
     ...comments.map((comment) => [
       comment.id,
       comment.ticketId,
       comment.author,
       comment.text,
       comment.createdAt,
+      comment.updatedAt || '',
+      comment.deleted ? 'TRUE' : 'FALSE',
     ]),
   ]
 }
@@ -428,6 +439,7 @@ function parseTickets(rows) {
     createdAt: String(row[17] || ''),
     updatedAt: String(row[18] || ''),
     history: parseJsonArray(row[19]),
+    deleted: String(row[20] || 'FALSE').toUpperCase() === 'TRUE',
   }))
 }
 
@@ -457,6 +469,8 @@ function parseEmployees(rows) {
     managerId: String(row[8] || ''),
     gender: String(row[9] || 'male'),
     photo: String(row[10] || ''),
+    updatedAt: String(row[11] || ''),
+    deleted: String(row[12] || 'FALSE').toUpperCase() === 'TRUE',
   }))
 }
 
@@ -471,6 +485,8 @@ function parseComments(rows) {
     author: String(row[2] || ''),
     text: String(row[3] || ''),
     createdAt: String(row[4] || ''),
+    updatedAt: String(row[5] || ''),
+    deleted: String(row[6] || 'FALSE').toUpperCase() === 'TRUE',
   }))
 }
 
@@ -560,6 +576,29 @@ async function restoreFromSheets(req, res) {
   }
 }
 
+// Merge an incoming collection into what's already in the Sheet, keyed by id.
+// Records the caller never knew about (present in the Sheet, absent from the
+// payload) are KEPT — this is what stops one client from wiping another's data.
+// On conflict (same id in both) the version with the newer `updatedAt` wins; if
+// neither carries a timestamp, the incoming version wins (it's the active edit).
+function mergeById(existing, incoming) {
+  const byId = new Map()
+  for (const rec of existing) if (rec && rec.id) byId.set(rec.id, rec)
+  for (const rec of incoming) {
+    if (!rec || !rec.id) continue
+    const prev = byId.get(rec.id)
+    if (!prev) {
+      byId.set(rec.id, rec)
+      continue
+    }
+    const a = String(rec.updatedAt || '')
+    const b = String(prev.updatedAt || '')
+    // Newer timestamp wins; with no timestamps, the incoming edit wins.
+    if (!a && !b ? true : a >= b) byId.set(rec.id, rec)
+  }
+  return [...byId.values()]
+}
+
 async function persistToSheets(req, res) {
   if (!spreadsheetId) {
     return res.status(503).json({ error: 'GOOGLE_SHEET_ID is not configured' })
@@ -569,6 +608,25 @@ async function persistToSheets(req, res) {
     const { projects = [], tickets = [], employees = [], comments = [], requests = [], feedback = [] } = req.body
     const sheetsClient = getAuthorizedSheetsClient(req.session.user)
     await ensureSheets(sheetsClient)
+
+    // Read the current Sheet first and merge, so a client can only ADD or UPDATE
+    // records — never silently drop ones it didn't have. Deletes still propagate
+    // because they arrive as tombstones (deleted=true with a fresh updatedAt).
+    const [curProjects, curTickets, curEmployees, curComments, curRequests, curFeedback] = await Promise.all([
+      sheetsClient.spreadsheets.values.get({ spreadsheetId, range: 'Projects!A1:ZZ' }),
+      sheetsClient.spreadsheets.values.get({ spreadsheetId, range: 'Tickets!A1:ZZ' }),
+      sheetsClient.spreadsheets.values.get({ spreadsheetId, range: 'Employees!A1:ZZ' }),
+      sheetsClient.spreadsheets.values.get({ spreadsheetId, range: 'Comments!A1:ZZ' }),
+      sheetsClient.spreadsheets.values.get({ spreadsheetId, range: 'Requests!A1:ZZ' }),
+      sheetsClient.spreadsheets.values.get({ spreadsheetId, range: 'Feedback!A1:ZZ' }),
+    ])
+
+    const mergedProjects = mergeById(parseProjects(curProjects.data.values || []), projects)
+    const mergedTickets = mergeById(parseTickets(curTickets.data.values || []), tickets)
+    const mergedEmployees = mergeById(parseEmployees(curEmployees.data.values || []), employees)
+    const mergedComments = mergeById(parseComments(curComments.data.values || []), comments)
+    const mergedRequests = mergeById(parseRequests(curRequests.data.values || []), requests)
+    const mergedFeedback = mergeById(parseFeedback(curFeedback.data.values || []), feedback)
 
     await Promise.all([
       sheetsClient.spreadsheets.values.clear({ spreadsheetId, range: 'Projects' }),
@@ -584,12 +642,12 @@ async function persistToSheets(req, res) {
       resource: {
         valueInputOption: 'RAW',
         data: [
-          { range: 'Projects!A1', values: flattenProjects(projects) },
-          { range: 'Tickets!A1', values: flattenTickets(tickets) },
-          { range: 'Employees!A1', values: flattenEmployees(employees) },
-          { range: 'Comments!A1', values: flattenComments(comments) },
-          { range: 'Requests!A1', values: flattenRequests(requests) },
-          { range: 'Feedback!A1', values: flattenFeedback(feedback) },
+          { range: 'Projects!A1', values: flattenProjects(mergedProjects) },
+          { range: 'Tickets!A1', values: flattenTickets(mergedTickets) },
+          { range: 'Employees!A1', values: flattenEmployees(mergedEmployees) },
+          { range: 'Comments!A1', values: flattenComments(mergedComments) },
+          { range: 'Requests!A1', values: flattenRequests(mergedRequests) },
+          { range: 'Feedback!A1', values: flattenFeedback(mergedFeedback) },
         ],
       },
     })

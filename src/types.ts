@@ -65,6 +65,9 @@ export type Ticket = {
   history: TicketEvent[]
   createdAt: string
   updatedAt: string
+  // Soft-delete tombstone: kept in the Sheet (hidden in the UI) so a delete
+  // survives the server-side merge and can't be resurrected by a stale client.
+  deleted?: boolean
 }
 
 export type Gender = 'male' | 'female'
@@ -81,6 +84,10 @@ export type Employee = {
   managerId: string
   gender: Gender
   photo?: string
+  // Stamped on every mutation so the server merge can pick the newest version.
+  updatedAt?: string
+  // Soft-delete tombstone (see Ticket.deleted).
+  deleted?: boolean
 }
 
 export type RequestType = 'unarchive' | 'team-move'
@@ -117,6 +124,10 @@ export type Comment = {
   author: string
   text: string
   createdAt: string
+  // Stamped on every mutation so the server merge can pick the newest version.
+  updatedAt?: string
+  // Soft-delete tombstone (see Ticket.deleted).
+  deleted?: boolean
 }
 
 export type AuthUser = {
