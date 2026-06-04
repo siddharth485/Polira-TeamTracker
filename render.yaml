@@ -37,8 +37,11 @@ services:
         sync: false
       - key: EXTRA_ALLOWED_EMAILS
         sync: false # external (non-@pacwinindia.com) members allowed to sign in
-      # Service account: powers Sheet persistence for ALL users + Gmail sending
-      # (domain-wide delegation impersonating GMAIL_USER). Paste the full JSON key.
+      # Server identity for Sheet persistence (all users) + sending email.
+      # Use a refresh token (node scripts/get-refresh-token.js) when org policy
+      # blocks service-account keys, OR a service-account JSON if allowed.
+      - key: GOOGLE_REFRESH_TOKEN
+        sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false
       - key: GMAIL_USER

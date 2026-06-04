@@ -86,9 +86,22 @@ function loadServiceAccount() {
 
 const serviceAccount = loadServiceAccount()
 
-// Service-account Sheets client: the server reads/writes the Sheet itself, so
-// persistence works for every signed-in user (incl. external ones) regardless of
-// whether their own Google account can access the Sheet.
+// The server's own Google identity, used to read/write the Sheet and send mail
+// so persistence/email don't depend on each user's account. Two ways to provide
+// it (service-account JSON, or — when org policy blocks SA keys — a dedicated
+// account's OAuth refresh token):
+const svcRefreshToken = process.env.GOOGLE_REFRESH_TOKEN
+const svcOAuth =
+  !serviceAccount && svcRefreshToken && clientId && clientSecret
+    ? (() => {
+        const o = buildOAuthClient()
+        o.setCredentials({ refresh_token: svcRefreshToken })
+        return o
+      })()
+    : null
+
+const serviceIdentity = serviceAccount ? 'service-account' : svcOAuth ? 'refresh-token' : 'none'
+
 const saSheets = serviceAccount
   ? google.sheets({
       version: 'v4',
@@ -98,10 +111,10 @@ const saSheets = serviceAccount
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       }),
     })
-  : null
+  : svcOAuth
+    ? google.sheets({ version: 'v4', auth: svcOAuth })
+    : null
 
-// Service-account Gmail client: impersonates the sender (mailUser) via
-// domain-wide delegation to send notification emails — no app password.
 const saGmail = serviceAccount
   ? google.gmail({
       version: 'v1',
@@ -109,14 +122,16 @@ const saGmail = serviceAccount
         email: serviceAccount.client_email,
         key: serviceAccount.private_key,
         scopes: ['https://www.googleapis.com/auth/gmail.send'],
-        subject: mailUser,
+        subject: mailUser, // domain-wide delegation impersonation
       }),
     })
-  : null
+  : svcOAuth
+    ? google.gmail({ version: 'v1', auth: svcOAuth }) // sends as the token's own account
+    : null
 
-// Optional fallback: nodemailer via app password (only if no service account).
+// Optional fallback: nodemailer via app password (only if no server identity).
 const mailPass = process.env.GMAIL_APP_PASSWORD
-const smtpMailer = !serviceAccount && mailPass
+const smtpMailer = !saGmail && mailPass
   ? nodemailer.createTransport({ service: 'gmail', auth: { user: mailUser, pass: mailPass } })
   : null
 
@@ -543,8 +558,8 @@ app.get('/api/config', async (_req, res) => {
   res.json({
     sheetConfigured: hasRealSheetConfig(),
     googleConfigured: hasRealGoogleConfig(),
-    serviceAccount: Boolean(saSheets),
-    serviceAccountEmail: serviceAccount?.client_email || null,
+    serverIdentity: serviceIdentity, // 'service-account' | 'refresh-token' | 'none'
+    persistsForEveryone: Boolean(saSheets),
     email: emailEnabled,
     sheetAccess,
     frontendOrigin,
