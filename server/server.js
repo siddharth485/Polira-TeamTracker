@@ -699,12 +699,22 @@ app.get('/api/config', async (_req, res) => {
   let debug
   if (_req.query?.debug === '1' && saSheets && spreadsheetId) {
     try {
-      const t = await saSheets.spreadsheets.values.get({ spreadsheetId, range: 'Tickets!A1:ZZ' })
-      const rows = (t.data.values || []).slice(1).filter((r) => r[0])
+      const [t, e] = await Promise.all([
+        saSheets.spreadsheets.values.get({ spreadsheetId, range: 'Tickets!A1:ZZ' }),
+        saSheets.spreadsheets.values.get({ spreadsheetId, range: 'Employees!A1:ZZ' }),
+      ])
+      const trows = (t.data.values || []).slice(1).filter((r) => r[0])
+      const erows = (e.data.values || []).slice(1).filter((r) => r[0])
       debug = {
-        ticketsTabRows: rows.length,
-        seedTicketsStillPresent: rows.filter((r) => SEED_TICKET_IDS.has(String(r[0]))).map((r) => String(r[0])),
-        ticketIds: rows.map((r) => ({ id: String(r[0]), deleted: String(r[20] || '').toUpperCase() === 'TRUE' })),
+        ticketsTabRows: trows.length,
+        seedTicketsStillPresent: trows.filter((r) => SEED_TICKET_IDS.has(String(r[0]))).map((r) => String(r[0])),
+        employees: erows.map((r) => ({
+          id: String(r[0]),
+          name: String(r[1] || ''),
+          email: String(r[3] || ''),
+          updatedAt: String(r[11] || ''),
+          deleted: String(r[12] || '').toUpperCase() === 'TRUE',
+        })),
       }
     } catch (error) {
       debug = { error: error?.message?.slice(0, 120) || 'read failed' }
