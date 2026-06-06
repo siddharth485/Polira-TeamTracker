@@ -705,16 +705,12 @@ app.get('/api/config', async (_req, res) => {
       ])
       const trows = (t.data.values || []).slice(1).filter((r) => r[0])
       const erows = (e.data.values || []).slice(1).filter((r) => r[0])
+      // Aggregate counts only — never expose names/emails on this public endpoint.
       debug = {
         ticketsTabRows: trows.length,
         seedTicketsStillPresent: trows.filter((r) => SEED_TICKET_IDS.has(String(r[0]))).map((r) => String(r[0])),
-        employees: erows.map((r) => ({
-          id: String(r[0]),
-          name: String(r[1] || ''),
-          email: String(r[3] || ''),
-          updatedAt: String(r[11] || ''),
-          deleted: String(r[12] || '').toUpperCase() === 'TRUE',
-        })),
+        employeeRows: erows.length,
+        employeesTombstoned: erows.filter((r) => String(r[12] || '').toUpperCase() === 'TRUE').length,
       }
     } catch (error) {
       debug = { error: error?.message?.slice(0, 120) || 'read failed' }
