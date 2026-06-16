@@ -54,7 +54,14 @@ const memberEmails = parseEmailList(process.env.PACWIN_MEMBER_EMAILS)
 // Extra emails that may sign in (e.g. team members outside the @pacwinindia.com
 // domain). Configurable via env, plus a built-in list for known external members.
 const extraAllowedEmails = parseEmailList(process.env.EXTRA_ALLOWED_EMAILS)
-const builtinAllowedEmails = ['nikhilvns181@gmail.com']
+// Known external (non-@pacwinindia.com) members. The Master tab also grants
+// access to any email it lists, but baking the known externals in here keeps
+// them working even if the Sheet read ever fails.
+const builtinAllowedEmails = [
+  'nikhilvns181@gmail.com',
+  'gulatiaaditiya16@gmail.com',
+  'imehaksoni@gmail.com',
+]
 
 function isAllowedEmail(email) {
   const e = String(email || '').toLowerCase()
