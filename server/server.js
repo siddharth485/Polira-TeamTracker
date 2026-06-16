@@ -724,6 +724,31 @@ app.get('/api/config', async (_req, res) => {
     }
   }
 
+  // ?checkEmail=foo@bar.com — does the SERVER allow this account to sign in, and
+  // via which path? If allowed:true but the user still can't get in, the block
+  // is Google's OAuth screen (test users / publishing), not Polira.
+  let emailCheck
+  const toCheck = _req.query?.checkEmail
+  if (toCheck) {
+    const em = String(toCheck).trim().toLowerCase()
+    let masterOrEmployeesTab = false
+    try {
+      masterOrEmployeesTab = (await emailsAllowedFromSheet()).has(em)
+    } catch {
+      /* ignore */
+    }
+    emailCheck = {
+      email: em,
+      allowedToSignIn: await isAllowedToSignIn(em),
+      via: {
+        pacwinDomain: em.endsWith('@pacwinindia.com'),
+        builtin: builtinAllowedEmails.includes(em),
+        envLists: [...adminEmails, ...managerEmails, ...memberEmails, ...extraAllowedEmails].includes(em),
+        masterOrEmployeesTab,
+      },
+    }
+  }
+
   res.json({
     sheetConfigured: hasRealSheetConfig(),
     googleConfigured: hasRealGoogleConfig(),
@@ -733,6 +758,7 @@ app.get('/api/config', async (_req, res) => {
     sheetAccess,
     tabs, // every tab title in the spreadsheet — confirms naming the app expects
     debug,
+    emailCheck,
     frontendOrigin,
   })
 })
