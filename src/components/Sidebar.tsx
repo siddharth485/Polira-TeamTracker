@@ -6,7 +6,6 @@ import { Logo } from './Logo'
 const WORKSPACE: { key: Screen; label: string; icon: string }[] = [
   { key: 'Board', label: 'Board', icon: '▦' },
   { key: 'Tickets', label: 'Tickets', icon: '☰' },
-  { key: 'Teams', label: 'Teams', icon: '⑃' },
   { key: 'Performance', label: 'Performance', icon: '◎' },
 ]
 

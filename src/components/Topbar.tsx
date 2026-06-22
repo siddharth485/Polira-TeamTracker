@@ -7,7 +7,6 @@ import { RequestsInbox } from './RequestsInbox'
 const TITLES: Record<Screen, string> = {
   Board: 'Board',
   Tickets: 'Tickets',
-  Teams: 'Teams',
   Performance: 'Performance',
   Users: 'Users',
   WhatsApp: 'WhatsApp Import',

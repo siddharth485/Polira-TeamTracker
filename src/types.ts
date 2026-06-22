@@ -139,7 +139,7 @@ export type AuthUser = {
 
 export type SyncState = 'idle' | 'saving' | 'synced' | 'local'
 
-export type Screen = 'Board' | 'Tickets' | 'Teams' | 'Performance' | 'Users' | 'WhatsApp'
+export type Screen = 'Board' | 'Tickets' | 'Performance' | 'Users' | 'WhatsApp'
 
 // Actions gated by the permission system (see lib/permissions.ts).
 export type Action =

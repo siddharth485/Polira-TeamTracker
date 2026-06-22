@@ -10,7 +10,6 @@ import { TicketsTable } from './components/tickets/TicketsTable'
 import { Performance } from './components/performance/Performance'
 import { Users } from './components/users/Users'
 import { WhatsAppImport } from './components/whatsapp/WhatsAppImport'
-import { TeamsScreen } from './components/teams/TeamsScreen'
 import { NewTicketModal } from './components/NewTicketModal'
 import { TicketDetail } from './components/TicketDetail'
 import { ProfileView } from './components/profile/ProfileView'
@@ -83,7 +82,6 @@ function Workspace() {
                 />
               )}
               {screen === 'Tickets' && <TicketsTable query={query} onOpenTicket={setOpenTicket} />}
-              {screen === 'Teams' && <TeamsScreen onOpenProfile={setOpenProfile} />}
               {screen === 'Performance' && <Performance onOpenProfile={setOpenProfile} />}
               {screen === 'Users' && <Users query={query} />}
               {screen === 'WhatsApp' && <WhatsAppImport />}
