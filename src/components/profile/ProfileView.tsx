@@ -8,7 +8,6 @@ import { TEAM_COLORS } from '../../config/workItems'
 import { relativeTime } from '../../lib/format'
 import { Avatar } from '../Avatar'
 
-const Avatar3D = lazy(() => import('./Avatar3D'))
 const ProfileCharts = lazy(() => import('./ProfileCharts').then((m) => ({ default: m.ProfileCharts })))
 
 type Props = {
@@ -84,9 +83,7 @@ export function ProfileView({ employeeId, onClose }: Props) {
 
         <div className="profile-hero" style={{ ['--team' as string]: teamColor }}>
           <div className="profile-3d">
-            <Suspense fallback={<div className="profile-3d-loading"><Avatar name={employee.name} size={96} /></div>}>
-              <Avatar3D employee={employee} />
-            </Suspense>
+            <Avatar name={employee.name} size={96} />
           </div>
           <div className="profile-id">
             <span className="eyebrow" style={{ color: teamColor }}>{employee.team} team · {employee.role}</span>
